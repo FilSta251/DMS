@@ -380,7 +380,7 @@ class CustomerCommunicationWidget(QWidget):
     def save_communication(self, comm_type, subject, content, direction, status):
         """Uložení komunikace do databáze"""
         try:
-            from utils_auth import get_current_username
+            from utils.utils_auth import get_current_username
             username = get_current_username() or "Systém"
 
             db.execute(

@@ -12,8 +12,8 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from datetime import datetime
 from database_manager import db
-from utils_auth import hash_password, get_current_user_id
-from utils_permissions import has_permission
+from utils.utils_auth import hash_password, get_current_user_id
+from utils.utils_permissions import has_permission
 import config
 
 

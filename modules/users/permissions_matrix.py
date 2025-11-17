@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QColor
 from database_manager import db
-from utils_auth import get_current_user_id
-from utils_permissions import has_permission
+from utils.utils_auth import get_current_user_id
+from utils.utils_permissions import has_permission
 import config
 
 

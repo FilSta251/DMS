@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 import config
-from utils_auth import get_current_username, get_current_user_id
-from utils_permissions import has_permission
+from utils.utils_auth import get_current_username, get_current_user_id
+from utils.utils_permissions import has_permission
 
 
 class MainWindow(QMainWindow):

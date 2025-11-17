@@ -8,7 +8,7 @@ Pokud najde plaintext heslo, po úspěšném loginu ho převede na bcrypt.
 from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QMessageBox
 from PyQt6.QtCore import Qt
 from database_manager import db
-from utils_auth import verify_password, set_current_user, upgrade_password_to_bcrypt
+from utils.utils_auth import verify_password, hash_password, set_current_user, upgrade_password_to_bcrypt
 
 class LoginDialog(QDialog):
     def __init__(self, parent=None):

@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from datetime import datetime
 from database_manager import db
-from utils_auth import hash_password
+from utils.utils_auth import hash_password
 import config
 import csv
 import random
