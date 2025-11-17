@@ -1,0 +1,1200 @@
+# ⚙️ MODUL NASTAVENÍ - KOMPLETNÍ STRUKTURA A POPIS
+
+## PŘEHLED MODULU
+Modul nastavení je centrální konfigurační centrum celého systému Motoservis DMS. Umožňuje kompletní nastavení aplikace, firemních údajů, uživatelů, oprávnění, zálohování a přizpůsobení systému.
+
+---
+
+## 📁 STRUKTURA SOUBORŮ
+
+```
+modules/settings/
+├── __init__.py                    # Inicializace modulu
+├── module_settings.py             # ⭐ Hlavní nastavení s navigací
+├── settings_company.py            # Firemní údaje
+├── settings_users.py              # Správa uživatelů
+├── settings_permissions.py        # Oprávnění a role
+├── settings_orders.py             # Nastavení zakázek
+├── settings_invoicing.py          # Fakturace a číselné řady
+├── settings_templates.py          # Šablony dokumentů
+├── settings_email.py              # Email a notifikace
+├── settings_backup.py             # Zálohování a obnova - možnost nastavit si zálohu do pc a třeba na NAS server
+├── settings_database.py           # Správa databáze
+├── settings_appearance.py         # Vzhled a přizpůsobení
+├── settings_integrations.py       # Integrace (ARES, SMS, API)
+├── settings_license.py            # Licence a aktivace
+└── settings_widgets.py            # Dialogy a komponenty
+```
+
+---
+
+### **1. `__init__.py`** 📦
+
+**Účel:** Inicializační soubor modulu
+
+**Obsahuje:**
+```python
+"""
+Modul Nastavení - Konfigurace systému
+"""
+from .module_settings import SettingsModule
+
+__all__ = ['SettingsModule']
+```
+
+---
+
+### **2. `module_settings.py`** ⭐ HLAVNÍ SOUBOR
+
+**Účel:** Hlavní vstupní bod s navigací mezi sekcemi
+
+**Obsahuje:**
+
+**Layout:**
+- Levý panel - navigační menu
+- Pravý panel - obsah vybrané sekce
+
+**Navigační menu:**
+- 🏢 **Firemní údaje**
+- 👥 **Uživatelé**
+- 🔐 **Oprávnění a role**
+- 📋 **Zakázky**
+- 🧾 **Fakturace**
+- 📄 **Šablony dokumentů**
+- 📧 **Email a notifikace**
+- 💾 **Zálohování**
+- 🗄️ **Databáze**
+- 🎨 **Vzhled**
+- 🔗 **Integrace**
+- 📜 **Licence**
+
+**Hlavička:**
+- Titulek "⚙️ Nastavení"
+- Vyhledávání v nastavení
+- Tlačítko "📖 Nápověda"
+- Tlačítko "🔄 Obnovit výchozí"
+
+**Funkce:**
+- `switch_section()` - přepnutí sekce
+- `search_settings()` - vyhledávání
+- `reset_to_defaults()` - obnovení výchozích
+- `export_settings()` - export nastavení
+- `import_settings()` - import nastavení
+
+---
+
+### **3. `settings_company.py`** 🏢
+
+**Účel:** Nastavení firemních údajů
+
+**Obsahuje:**
+
+**Sekce: Základní údaje**
+- Název firmy *
+- IČO *
+- DIČ
+- Právní forma (s.r.o., a.s., OSVČ...)
+- Datum založení
+- Registrace (OR, ŽL)
+
+**Sekce: Kontaktní údaje**
+- Adresa sídla *
+  - Ulice
+  - Město
+  - PSČ
+  - Kraj
+  - Země
+- Provozovna (pokud jiná)
+- Telefon *
+- Email *
+- Web
+- Fax (volitelně)
+
+**Sekce: Bankovní spojení**
+- Číslo účtu *
+- Kód banky
+- IBAN
+- BIC/SWIFT
+- Název banky
+
+**Sekce: Logo a branding**
+- Logo firmy (upload obrázku)
+  - Náhled
+  - Doporučené rozměry
+  - Formáty: PNG, JPG, SVG
+- Barvy firmy
+  - Primární barva
+  - Sekundární barva
+- Razítko (upload)
+- Podpis (upload)
+
+**Sekce: Provozní údaje**
+- Otevírací doba:
+  - Pondělí: 7:00-16:00
+  - Úterý: 7:00-16:00
+  - ...
+  - Sobota: 8:00-12:00
+  - Neděle: Zavřeno
+- Svátky (import CZ svátků)
+- Kapacita servisu (počet stanovišť)
+- Maximální počet zakázek/den
+
+**Tlačítka:**
+- 💾 Uložit změny
+- 🔄 Obnovit
+- 📤 Exportovat údaje
+
+**Validace:**
+- IČO 8 číslic
+- DIČ formát CZxxxxxxxx
+- IBAN validace
+- Povinná pole
+
+---
+
+### **4. `settings_users.py`** 👥
+
+**Účel:** Správa uživatelů systému
+
+**Obsahuje:**
+
+**Tabulka uživatelů:**
+- Jméno a příjmení
+- Uživatelské jméno (login)
+- Email
+- Role (Admin, Mechanik, Recepce, Účetní)
+- Poslední přihlášení
+- Stav (Aktivní/Neaktivní)
+- Akce (upravit, smazat, resetovat heslo)
+
+**Tlačítka:**
+- ➕ Nový uživatel
+- 📤 Export uživatelů
+- 🔄 Obnovit
+
+**Dialog nového uživatele:**
+
+*Základní údaje:*
+- Jméno *
+- Příjmení *
+- Email *
+- Telefon
+
+*Přihlašovací údaje:*
+- Uživatelské jméno * (unikátní)
+- Heslo * (min. 8 znaků, velké/malé, číslo)
+- Potvrdit heslo *
+- Změnit heslo při prvním přihlášení (checkbox)
+
+*Role a oprávnění:*
+- Role (ComboBox):
+  - Administrátor
+  - Manažer
+  - Mechanik
+  - Recepce
+  - Účetní
+  - Sklad
+- Aktivní (checkbox)
+
+*Notifikace:*
+- Email notifikace (ano/ne)
+- Denní souhrn (ano/ne)
+
+**Funkce:**
+- `create_user()` - vytvoření uživatele
+- `update_user()` - úprava uživatele
+- `delete_user()` - smazání (pouze pokud nemá data)
+- `reset_password()` - reset hesla
+- `toggle_active()` - aktivace/deaktivace
+- `view_activity_log()` - log aktivit uživatele
+
+**Bezpečnost:**
+- Hash hesla (bcrypt)
+- Dvoufaktorová autentizace (volitelně)
+- Session timeout
+- Lockout po X neúspěšných pokusech
+
+---
+
+### **5. `settings_permissions.py`** 🔐
+
+**Účel:** Správa oprávnění a rolí
+
+**Obsahuje:**
+
+**Předdefinované role:**
+
+*Administrátor:*
+- ✅ Plný přístup ke všemu
+- ✅ Správa uživatelů
+- ✅ Nastavení systému
+- ✅ Zálohování
+- ✅ Mazání dat
+
+*Manažer:*
+- ✅ Zakázky (vše)
+- ✅ Zákazníci (vše)
+- ✅ Vozidla (vše)
+- ✅ Fakturace (čtení)
+- ✅ Reporty (vše)
+- ❌ Správa uživatelů
+- ❌ Nastavení systému
+
+*Mechanik:*
+- ✅ Zakázky (vlastní, upravit)
+- ✅ Zákazníci (čtení)
+- ✅ Vozidla (čtení)
+- ✅ Sklad (výdej)
+- ❌ Fakturace
+- ❌ Reporty
+
+*Recepce:*
+- ✅ Zakázky (vytvořit, čtení)
+- ✅ Zákazníci (vše)
+- ✅ Vozidla (vše)
+- ✅ Kalendář (vše)
+- ❌ Sklad
+- ❌ Fakturace
+
+*Účetní:*
+- ✅ Fakturace (vše)
+- ✅ Reporty finanční
+- ✅ Zákazníci (čtení)
+- ❌ Zakázky (jen čtení)
+- ❌ Sklad
+
+**Matice oprávnění:**
+```
+Modul          | Admin | Manažer | Mechanik | Recepce | Účetní |
+---------------|-------|---------|----------|---------|--------|
+Zakázky-Číst   |  ✅   |   ✅    |    ✅    |   ✅    |   ✅   |
+Zakázky-Vytvořit|  ✅   |   ✅    |    ❌    |   ✅    |   ❌   |
+Zakázky-Upravit|  ✅   |   ✅    |    ✅*   |   ❌    |   ❌   |
+Zakázky-Smazat |  ✅   |   ✅    |    ❌    |   ❌    |   ❌   |
+Zákazníci-Vše  |  ✅   |   ✅    |    ❌    |   ✅    |   ❌   |
+Fakturace-Vše  |  ✅   |   ❌    |    ❌    |   ❌    |   ✅   |
+Nastavení      |  ✅   |   ❌    |    ❌    |   ❌    |   ❌   |
+```
+*pouze vlastní zakázky
+
+**Vytvoření vlastní role:**
+- Název role
+- Popis
+- Výběr oprávnění (checkbox tree)
+- Barva role
+
+**Audit log:**
+- Kdo udělal co a kdy
+- Filtrování podle uživatele/akce
+- Export logu
+
+**Funkce:**
+- `create_role()` - nová role
+- `assign_permissions()` - přiřazení oprávnění
+- `check_permission()` - kontrola oprávnění
+- `view_audit_log()` - audit log
+
+---
+
+### **6. `settings_orders.py`** 📋
+
+**Účel:** Nastavení zakázek
+
+**Obsahuje:**
+
+**Sekce: Číslování zakázek**
+- Formát čísla (RRRR####, ZAK-####, vlastní)
+- Prefix (ZAK-, OBJ-, ...)
+- Počáteční číslo
+- Reset každý rok (ano/ne)
+- Náhled: ZAK-2025-0001
+
+**Sekce: Typy zakázek**
+- Seznam typů (editovatelný):
+  - Zakázka
+  - Volný prodej
+  - Nabídka
+  - Garance
+  - Reklamace
+- Přidání vlastního typu
+- Barva pro každý typ
+
+**Sekce: Stavy zakázek**
+- Seznam stavů (editovatelný):
+  - V přípravě (šedá)
+  - Otevřená (modrá)
+  - Rozpracovaná (oranžová)
+  - Čeká na díly (žlutá)
+  - Hotová (zelená)
+  - Fakturováno (fialová)
+  - Archiv (tmavě šedá)
+- Workflow (povolené přechody)
+- Barva stavu
+- Ikona stavu
+
+**Sekce: Výchozí hodnoty**
+- Výchozí typ zakázky
+- Výchozí stav nové zakázky
+- Výchozí mechanik (ano/ne)
+- Automaticky přiřadit zákazníka vozidlu
+- Automaticky vypočítat cenu
+
+**Sekce: Položky zakázky**
+- Typy položek:
+  - Materiál
+  - Práce
+  - Cizí výkon
+  - Ostatní
+- Výchozí DPH sazba (21%, 15%, 12%, 0%)
+- Zaokrouhlování cen (na koruny, na 10hal)
+- Minimální marže (varování)
+
+**Sekce: Automatizace**
+- Automatické odeslání emailu zákazníkovi při:
+  - Vytvoření zakázky
+  - Změně stavu
+  - Dokončení
+- Automatický tisk zakázkového listu
+- Automatická archivace po X dnech
+
+---
+
+### **7. `settings_invoicing.py`** 🧾
+
+**Účel:** Nastavení fakturace
+
+**Obsahuje:**
+
+**Sekce: Číselné řady**
+
+*Faktury vydané:*
+- Formát (FV2025####)
+- Prefix (FV-, FAK-, ...)
+- Počáteční číslo
+- Reset ročně
+
+*Faktury přijaté:*
+- Formát (FP2025####)
+- Prefix
+- Počáteční číslo
+
+*Dobropisy:*
+- Formát (DOP2025####)
+- Prefix
+- Počáteční číslo
+
+*Zálohové faktury:*
+- Formát
+- Prefix
+
+**Sekce: Splatnost**
+- Výchozí splatnost (14, 21, 30, 45, 60 dní)
+- Různá splatnost podle skupiny zákazníka
+- Penále z prodlení (% denně)
+- Úrok z prodlení
+
+**Sekce: DPH**
+- Plátce DPH (ano/ne)
+- DIČ firmy
+- Sazby DPH:
+  - Základní: 21%
+  - Snížená: 12%
+  - Nulová: 0%
+- Výchozí sazba
+- Režim přenesení daňové povinnosti
+
+**Sekce: Platební metody**
+- Seznam metod:
+  - Bankovní převod
+  - Hotovost
+  - Platební karta
+  - Dobírka
+- Výchozí metoda
+- Poplatky za metodu
+
+**Sekce: Zaokrouhlování**
+- Zaokrouhlování faktur (na koruny, 10hal, bez)
+- Zaokrouhlování DPH
+- Způsob zaokrouhlení (matematicky, nahoru, dolů)
+
+**Sekce: Upomínky**
+- 1. upomínka po X dnech
+- 2. upomínka po Y dnech
+- 3. upomínka po Z dnech
+- Automatické odesílání (ano/ne)
+- Šablona upomínky
+
+---
+
+### **8. `settings_templates.py`** 📄
+
+**Účel:** Správa šablon dokumentů
+
+**Obsahuje:**
+
+**Seznam šablon:**
+- 📋 Zakázkový list
+- 📊 Proforma
+- 🧾 Faktura
+- 📝 Nabídka
+- 📄 Smlouva servisní
+- 📋 Předávací protokol
+- 📧 Email - potvrzení zakázky
+- 📧 Email - upomínka
+- 📧 Email - dokončení
+- 📱 SMS šablony
+
+**Editor šablon:**
+
+*WYSIWYG editor:*
+- Formátování textu
+- Vkládání proměnných ({{firma}}, {{zakaznik}}, {{datum}})
+- Logo
+- Tabulky
+- Obrázky
+
+*Proměnné (placeholder):*
+```
+{{firma_nazev}}
+{{firma_ico}}
+{{firma_dic}}
+{{firma_adresa}}
+{{firma_telefon}}
+{{firma_email}}
+{{firma_ucet}}
+
+{{zakaznik_jmeno}}
+{{zakaznik_adresa}}
+{{zakaznik_telefon}}
+{{zakaznik_email}}
+{{zakaznik_ico}}
+
+{{vozidlo_spz}}
+{{vozidlo_znacka}}
+{{vozidlo_model}}
+{{vozidlo_vin}}
+
+{{zakazka_cislo}}
+{{zakazka_datum}}
+{{zakazka_polozky}}
+{{zakazka_cena}}
+
+{{faktura_cislo}}
+{{faktura_datum_vystaveni}}
+{{faktura_datum_splatnosti}}
+{{faktura_vs}}
+```
+
+*Náhled:*
+- Live náhled s ukázkovými daty
+- PDF náhled
+- Tisk testovací
+
+**Import/Export šablon:**
+- Export do souboru
+- Import ze souboru
+- Sdílení šablon
+
+**Funkce:**
+- `edit_template()` - editace šablony
+- `preview_template()` - náhled
+- `restore_default()` - obnovení výchozí
+- `duplicate_template()` - duplikace
+- `export_template()` - export
+
+---
+
+### **9. `settings_email.py`** 📧
+
+**Účel:** Nastavení emailu a notifikací
+
+**Obsahuje:**
+
+**Sekce: SMTP nastavení**
+- SMTP server *
+- Port * (587, 465, 25)
+- Šifrování (TLS/SSL/žádné)
+- Uživatelské jméno *
+- Heslo *
+- Odesílatel (From) *
+- Reply-To
+- Tlačítko "🧪 Test připojení"
+
+**Sekce: Přednastavené SMTP**
+- Gmail
+- Outlook/Office 365
+- Seznam.cz
+- Vlastní
+
+**Sekce: Automatické emaily**
+- Potvrzení zakázky (ano/ne)
+- Změna stavu zakázky
+- Dokončení zakázky
+- Odeslání faktury
+- Upomínka před STK
+- Upomínka platby
+
+**Sekce: Podpis emailu**
+- HTML podpis
+- Logo v podpisu
+- Kontaktní údaje
+- Sociální sítě
+
+**Sekce: SMS brána (volitelně)**
+- Poskytovatel (SMS Operator, GoSMS...)
+- API klíč
+- Odesílatel
+- Kredit (zobrazení)
+- Tlačítko "🧪 Test SMS"
+
+**Sekce: Push notifikace**
+- Notifikace v aplikaci (ano/ne)
+- Zvuk notifikace
+- Desktop notifikace
+
+**Log odeslaných emailů:**
+- Datum a čas
+- Příjemce
+- Předmět
+- Stav (odesláno/chyba)
+- Detail chyby
+
+---
+
+### **10. `settings_backup.py`** 💾
+
+**Účel:** Zálohování a obnova dat
+možnost nastavit si zálohu do pc a třeba na NAS server
+
+**Obsahuje:**
+
+**Sekce: Automatické zálohování**
+- Povolit automatické zálohy (ano/ne)
+- Frekvence:
+  - Denně
+  - Týdně
+  - Měsíčně
+- Čas zálohování (např. 23:00)
+- Místo uložení:
+  - Lokální složka
+  - Síťový disk
+  - Cloud (Google Drive, OneDrive)
+- Počet uchovávaných záloh (např. 30)
+- Rotace starých záloh
+
+**Sekce: Manuální záloha**
+- Tlačítko "💾 Vytvořit zálohu nyní"
+- Výběr co zálohovat:
+  - ✅ Databáze
+  - ✅ Dokumenty
+  - ✅ Fotky
+  - ✅ Nastavení
+  - ✅ Šablony
+- Progress bar
+- Velikost zálohy
+- Čas trvání
+
+**Sekce: Obnova ze zálohy**
+- Seznam dostupných záloh:
+  - Datum a čas
+  - Velikost
+  - Typ (auto/manuální)
+  - Obsah
+- Tlačítko "🔄 Obnovit"
+- Varování o přepsání dat
+- Preview co bude obnoveno
+
+**Sekce: Export dat**
+- Export databáze (SQL dump)
+- Export do CSV
+- Export do Excel
+- Export do JSON
+- Selektivní export (pouze zákazníci, pouze zakázky...)
+
+**Sekce: Import dat**
+- Import z CSV
+- Import ze zálohy
+- Mapování dat
+- Validace před importem
+
+**Log zálohování:**
+- Historie záloh
+- Úspěšné/neúspěšné
+- Velikost
+- Čas trvání
+
+**Funkce:**
+- `create_backup()` - vytvoření zálohy
+- `restore_backup()` - obnova
+- `schedule_backup()` - naplánování
+- `cleanup_old_backups()` - smazání starých
+- `verify_backup()` - ověření integrity
+
+---
+
+### **11. `settings_database.py`** 🗄️
+
+**Účel:** Správa databáze
+
+**Obsahuje:**
+
+**Sekce: Informace o databázi**
+- Typ databáze (SQLite)
+- Verze
+- Cesta k souboru
+- Velikost databáze
+- Počet záznamů:
+  - Zákazníci: 150
+  - Vozidla: 230
+  - Zakázky: 1,450
+  - Faktury: 980
+- Poslední záloha
+- Stav: ✅ OK
+
+**Sekce: Údržba databáze**
+- Tlačítko "🔧 Optimalizovat databázi" (VACUUM)
+- Tlačítko "✅ Kontrola integrity"
+- Tlačítko "🔄 Reindex"
+- Tlačítko "🗑️ Vyčistit dočasné soubory"
+
+**Sekce: Archivace**
+- Archivovat staré zakázky (starší než X let)
+- Archivovat staré faktury
+- Přesun do archivní databáze
+- Nastavení pravidel archivace
+
+**Sekce: Migrace dat**
+- Import z jiného systému
+- Export pro migraci
+- Formáty (CSV, SQL, JSON)
+
+**Sekce: Pokročilé**
+- SQL konzole (pouze admin)
+- Spustit vlastní dotaz
+- Zobrazit strukturu tabulek
+- Log chyb databáze
+
+**Varování:**
+- ⚠️ Tyto operace mohou být nevratné!
+- ⚠️ Vytvořte zálohu před změnami!
+
+---
+
+### **12. `settings_appearance.py`** 🎨
+
+**Účel:** Vzhled a přizpůsobení
+
+**Obsahuje:**
+
+**Sekce: Téma aplikace**
+- Světlé téma
+- Tmavé téma
+- Automaticky podle systému
+- Vlastní barvy
+
+**Sekce: Barvy**
+- Primární barva (picker)
+- Sekundární barva
+- Barva úspěchu (zelená)
+- Barva varování (oranžová)
+- Barva chyby (červená)
+- Barva pozadí
+- Barva textu
+
+**Sekce: Písmo**
+- Font aplikace (Roboto, Arial, Segoe UI...)
+- Velikost písma (malé, střední, velké)
+- Tučné nadpisy (ano/ne)
+
+**Sekce: Layout**
+- Kompaktní režim (menší mezery)
+- Zobrazit ikony (ano/ne)
+- Zobrazit popisky tlačítek
+- Šířka postranního menu
+- Výchozí modul po přihlášení
+
+**Sekce: Dashboard**
+- Widgety na dashboardu (drag & drop pořadí):
+  - Dnešní zakázky
+  - Statistiky
+  - Vytíženost
+  - Upozornění
+  - Rychlé akce
+- Počet sloupců (1-3)
+- Automatické obnovování (interval)
+
+**Sekce: Tabulky**
+- Řádků na stránku (10, 25, 50, 100)
+- Alternující barvy řádků
+- Zvýrazňovat při hover
+- Kompaktní řádky
+
+**Sekce: Jazyk**
+- Jazyk aplikace (Čeština, English...)
+- Formát data (DD.MM.YYYY, YYYY-MM-DD)
+- Formát času (24h, 12h AM/PM)
+- Oddělovač tisíců (mezera, tečka, čárka)
+- Desetinný oddělovač (čárka, tečka)
+- Měna (CZK, EUR, USD)
+
+**Náhled:**
+- Live náhled změn
+- Tlačítko "Použít"
+- Tlačítko "Obnovit výchozí"
+
+---
+
+### **13. `settings_integrations.py`** 🔗
+
+**Účel:** Integrace s externími službami
+
+**Obsahuje:**
+
+**Sekce: ARES (Obchodní rejstřík)**
+- Povolit ARES lookup (ano/ne)
+- Automatické doplnění firemních údajů
+- Cache výsledků (dny)
+
+**Sekce: Google Calendar**
+- Připojit Google účet
+- OAuth autentizace
+- Synchronizovat kalendář (ano/ne)
+- Směr synchronizace (obousměrně, pouze export)
+- Kalendář pro synchronizaci
+
+**Sekce: Outlook/Microsoft 365**
+- Připojit Microsoft účet
+- Synchronizace kalendáře
+- Synchronizace emailů
+
+**Sekce: Účetní systémy**
+- Pohoda (export XML)
+- Money S3 (export)
+- ABRA (API)
+- Formát exportu
+- Automatický export
+
+**Sekce: Platební brány**
+- QR platba (generování QR kódu)
+- GoPay (volitelně)
+- PayPal (volitelně)
+
+**Sekce: SMS brána**
+- Poskytovatel
+- API klíč
+- Test SMS
+
+**Sekce: API přístup**
+- Povolit API (ano/ne)
+- API klíč (generování)
+- Rate limiting
+- Povolené IP adresy
+- Dokumentace API
+
+**Sekce: Webhooks**
+- URL pro webhook
+- Události k odesílání:
+  - Nová zakázka
+  - Změna stavu
+  - Nová faktura
+- Testování webhook
+
+---
+
+### **14. `settings_license.py`** 📜
+
+**Účel:** Licence a aktivace
+
+**Obsahuje:**
+
+**Sekce: Informace o licenci**
+- Typ licence (Trial, Basic, Pro, Enterprise)
+- Licenční klíč
+- Platnost do
+- Zbývá dní
+- Stav: ✅ Aktivní / ⚠️ Expiruje / ❌ Neplatná
+
+**Sekce: Limity licence**
+- Počet uživatelů: 5/5
+- Počet zákazníků: Neomezeno
+- Počet vozidel: Neomezeno
+- Moduly:
+  - ✅ Zakázky
+  - ✅ Zákazníci
+  - ✅ Vozidla
+  - ✅ Sklad
+  - ✅ Fakturace
+  - ⚠️ Pokročilé reporty (Pro)
+  - ❌ API přístup (Enterprise)
+
+**Sekce: Aktivace**
+- Licenční klíč (input)
+- Tlačítko "🔑 Aktivovat"
+- Online aktivace
+- Offline aktivace (soubor)
+
+**Sekce: Upgrade**
+- Aktuální plán
+- Dostupné plány:
+  - Basic: 499 Kč/měsíc
+  - Pro: 999 Kč/měsíc
+  - Enterprise: Kontaktujte nás
+- Tlačítko "⬆️ Upgradovat"
+
+**Sekce: O aplikaci**
+- Název: Motoservis DMS
+- Verze: 2.0.0
+- Build: 2025.11.14
+- Vývojář: [Vaše firma]
+- Kontakt: support@...
+- Tlačítko "🔄 Zkontrolovat aktualizace"
+
+**Sekce: Právní informace**
+- EULA (licence)
+- Ochrana osobních údajů
+- GDPR
+- Podmínky použití
+
+---
+
+### **15. `settings_widgets.py`** 🧩
+
+**Účel:** Pomocné dialogy a komponenty
+
+**Obsahuje:**
+
+**`SettingsSection`:**
+- Kontejner pro sekci nastavení
+- Nadpis s ikonou
+- Obsah
+- Tlačítko uložit
+- Indikátor změn
+
+**`ColorPickerWidget`:**
+- Výběr barvy
+- Hex input
+- RGB sliders
+- Přednastavené barvy
+- Náhled
+
+**`FontSelectorWidget`:**
+- Výběr fontu
+- Velikost
+- Náhled textu
+
+**`FilePathSelector`:**
+- Výběr cesty k souboru/složce
+- Browse tlačítko
+- Validace existence
+
+**`PasswordChangeDialog`:**
+- Staré heslo
+- Nové heslo
+- Potvrzení hesla
+- Indikátor síly hesla
+
+**`ImportExportDialog`:**
+- Výběr formátu
+- Mapování sloupců
+- Preview
+- Progress bar
+
+**`TestConnectionDialog`:**
+- Test SMTP
+- Test SMS
+- Test API
+- Výsledek (úspěch/chyba)
+
+**`BackupProgressDialog`:**
+- Progress bar
+- Aktuální operace
+- Čas zbývající
+- Zrušit tlačítko
+
+**`LicenseActivationDialog`:**
+- Input pro klíč
+- Online/Offline aktivace
+- Výsledek aktivace
+
+**`AboutDialog`:**
+- Logo aplikace
+- Verze
+- Copyright
+- Licence
+- Kontakt
+- Credits
+
+---
+
+## 🎨 VIZUALIZACE STRUKTURY
+
+```
+⚙️ MODUL NASTAVENÍ
+│
+├─ 🏢 Firemní údaje (settings_company)
+│  ├─ 📋 Základní údaje (IČO, DIČ)
+│  ├─ 📞 Kontaktní údaje
+│  ├─ 🏦 Bankovní spojení
+│  ├─ 🎨 Logo a branding
+│  └─ 🕐 Provozní údaje
+│
+├─ 👥 Uživatelé (settings_users)
+│  ├─ 📋 Seznam uživatelů
+│  ├─ ➕ Nový uživatel
+│  ├─ 🔐 Hesla a zabezpečení
+│  └─ 📊 Log aktivit
+│
+├─ 🔐 Oprávnění (settings_permissions)
+│  ├─ 👔 Role (Admin, Manažer...)
+│  ├─ ✅ Matice oprávnění
+│  ├─ ➕ Vlastní role
+│  └─ 📋 Audit log
+│
+├─ 📋 Zakázky (settings_orders)
+│  ├─ 🔢 Číslování
+│  ├─ 📊 Typy zakázek
+│  ├─ 🔄 Stavy a workflow
+│  └─ ⚙️ Výchozí hodnoty
+│
+├─ 🧾 Fakturace (settings_invoicing)
+│  ├─ 🔢 Číselné řady
+│  ├─ 📅 Splatnosti
+│  ├─ 💰 DPH sazby
+│  └─ 📧 Upomínky
+│
+├─ 📄 Šablony (settings_templates)
+│  ├─ 📋 Seznam šablon
+│  ├─ ✏️ WYSIWYG editor
+│  ├─ 🔤 Proměnné
+│  └─ 👁️ Náhled
+│
+├─ 📧 Email (settings_email)
+│  ├─ 📮 SMTP nastavení
+│  ├─ 📨 Automatické emaily
+│  ├─ ✍️ Podpis
+│  └─ 📱 SMS brána
+│
+├─ 💾 Zálohování (settings_backup)
+│  ├─ ⏰ Automatické zálohy
+│  ├─ 💾 Manuální záloha
+│  ├─ 🔄 Obnova
+│  └─ 📤 Export/Import
+│
+├─ 🗄️ Databáze (settings_database)
+│  ├─ ℹ️ Informace
+│  ├─ 🔧 Údržba
+│  ├─ 📦 Archivace
+│  └─ 🔄 Migrace
+│
+├─ 🎨 Vzhled (settings_appearance)
+│  ├─ 🌓 Téma (světlé/tmavé)
+│  ├─ 🎨 Barvy
+│  ├─ 🔤 Písmo
+│  └─ 🌐 Jazyk a formáty
+│
+├─ 🔗 Integrace (settings_integrations)
+│  ├─ 🔍 ARES
+│  ├─ 📅 Google/Outlook Calendar
+│  ├─ 💰 Účetní systémy
+│  └─ 🔌 API
+│
+└─ 📜 Licence (settings_license)
+   ├─ 🔑 Aktivace
+   ├─ 📊 Limity
+   ├─ ⬆️ Upgrade
+   └─ ℹ️ O aplikaci
+```
+
+---
+
+## 🔗 VAZBY NA OSTATNÍ MODULY
+
+**Závisí na:**
+- `config` - výchozí hodnoty
+- `database_manager` - přístup k databázi
+
+**Používá ho:**
+- Všechny ostatní moduly (čtení nastavení)
+- Celá aplikace (barvy, formáty, oprávnění)
+
+**Databázové tabulky:**
+- `settings` - klíč-hodnota nastavení
+- `users` - uživatelé
+- `roles` - role
+- `permissions` - oprávnění
+- `templates` - šablony dokumentů
+- `audit_log` - log změn
+- `backups` - historie záloh
+
+---
+
+## 💾 DATABÁZOVÁ STRUKTURA
+
+```sql
+CREATE TABLE settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT,
+    value_type TEXT DEFAULT 'string', -- string/integer/boolean/json
+    description TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by INTEGER,
+    UNIQUE(category, key)
+);
+
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    phone TEXT,
+    role_id INTEGER NOT NULL,
+    is_active BOOLEAN DEFAULT 1,
+    last_login DATETIME,
+    failed_attempts INTEGER DEFAULT 0,
+    locked_until DATETIME,
+    must_change_password BOOLEAN DEFAULT 0,
+    two_factor_enabled BOOLEAN DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (role_id) REFERENCES roles(id)
+);
+
+CREATE TABLE roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    is_system BOOLEAN DEFAULT 0, -- systémové role nelze smazat
+    color TEXT DEFAULT '#95a5a6',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE role_permissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role_id INTEGER NOT NULL,
+    module TEXT NOT NULL,
+    action TEXT NOT NULL, -- read/create/update/delete
+    allowed BOOLEAN DEFAULT 0,
+    FOREIGN KEY (role_id) REFERENCES roles(id),
+    UNIQUE(role_id, module, action)
+);
+
+CREATE TABLE audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    action TEXT NOT NULL,
+    module TEXT,
+    record_id INTEGER,
+    old_value TEXT,
+    new_value TEXT,
+    ip_address TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL, -- invoice/order/email/sms
+    subject TEXT,
+    content TEXT NOT NULL,
+    variables TEXT, -- JSON array of available variables
+    is_default BOOLEAN DEFAULT 0,
+    active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE backups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER,
+    backup_type TEXT DEFAULT 'manual', -- manual/auto
+    contents TEXT, -- JSON: ["database", "documents", "photos"]
+    status TEXT DEFAULT 'completed',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER
+);
+
+-- Indexy
+CREATE INDEX idx_settings_category ON settings(category);
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_audit_log_user ON audit_log(user_id);
+CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp);
+```
+
+---
+
+## 💡 KLÍČOVÉ FUNKCE
+
+1. **Centrální konfigurace** - vše na jednom místě
+2. **Správa uživatelů** - role a oprávnění
+3. **Matice oprávnění** - granulární kontrola přístupu
+4. **SMTP nastavení** - emaily a notifikace
+5. **Automatické zálohování** - ochrana dat
+6. **Šablony dokumentů** - přizpůsobitelné dokumenty
+7. **Číselné řady** - automatické číslování
+8. **DPH nastavení** - různé sazby
+9. **Integrace** - ARES, Calendar, účetní systémy
+10. **Audit log** - sledování změn
+11. **Témata a přizpůsobení** - personalizace vzhledu
+12. **Licence** - správa předplatného
+13. **Database maintenance** - optimalizace
+14. **Export/Import** - migrace dat
+
+---
+
+## 🎯 PRODUKČNÍ POŽADAVKY
+
+1. **Bezpečnost:**
+   - Hashování hesel (bcrypt, Argon2)
+   - SQL injection ochrana
+   - XSS ochrana
+   - CSRF tokeny
+   - Session management
+   - Audit logging
+   - Šifrování citlivých dat
+
+2. **Validace:**
+   - Kontrola všech vstupů
+   - Formát IČO/DIČ/IBAN
+   - Email validace
+   - Heslo požadavky
+   - File upload validace
+
+3. **Zálohování:**
+   - Automatické zálohy
+   - Rotace záloh
+   - Ověření integrity
+   - Obnova dat
+   - Offsite zálohy
+
+4. **Oprávnění:**
+   - Role-based access control (RBAC)
+   - Granulární oprávnění
+   - Princip nejmenších oprávnění
+   - Audit trail
+
+5. **UX:**
+   - Intuitivní navigace
+   - Validace v reálném čase
+   - Nápověda a dokumentace
+   - Undo změn
+   - Preview před uložením
+
+6. **Výkon:**
+   - Cache nastavení
+   - Lazy loading
+   - Optimalizované dotazy
+   - Indexy v DB
+
+7. **Údržba:**
+   - Automatické čištění
+   - Log rotace
+   - Archivace dat
+   - Health checks

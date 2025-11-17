@@ -1,0 +1,13 @@
+modules/management/
+├── __init__.py
+├── module_management.py
+├── management_dashboard.py
+├── management_orders_analysis.py
+├── management_mechanic_performance.py
+├── management_warehouse_overview.py
+├── management_financial.py
+├── management_trends.py
+├── management_kpi.py
+├── management_reports.py
+├── management_export.py
+└── management_widgets.py

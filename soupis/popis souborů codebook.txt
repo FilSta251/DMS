@@ -1,0 +1,323 @@
+from .module_codebooks import CodebooksModule
+__all__ = ['CodebooksModule']
+```
+
+---
+
+### **2. `module_codebooks.py`** 🏠
+
+**Účel:** Hlavní vstupní bod modulu s navigací
+
+**Obsahuje:**
+
+**Navigace:**
+- 🚗 Značky vozidel
+- 🔧 Typy oprav
+- 📏 Měrné jednotky
+- 💱 Měny
+- 👷 Pracovní pozice
+- ⏱️ Hodinové sazby
+- 👥 Zákaznické skupiny
+- 💳 Způsoby platby
+- 📊 Sazby DPH
+- 📋 Stavy zakázek
+- 🏍️ Typy vozidel
+- ⛽ Typy paliva
+- 🎨 Barvy vozidel
+
+**Funkce:**
+- Přepínání mezi číselníky
+- Rychlé statistiky (počty položek)
+- Globální vyhledávání
+- Import/export všech číselníků
+
+---
+
+### **3. `codebook_brands.py`** 🚗
+
+**Účel:** Správa značek vozidel (automobily, motocykly)
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Název značky (Škoda, BMW, Honda, Yamaha...)
+- Typ (Auto, Motocykl, Obojí)
+- Logo (volitelné)
+- Aktivní (ano/ne)
+- Oblíbená (pro rychlý výběr)
+
+**Funkce:**
+- CRUD operace
+- Import ze seznamu (CSV)
+- Vyhledávání
+- Aktivace/deaktivace
+- Řazení (abecedně, podle oblíbenosti)
+
+**Přednastavené značky:**
+- Auta: Škoda, VW, BMW, Audi, Mercedes, Toyota, Honda, Ford...
+- Motocykly: Honda, Yamaha, Suzuki, Kawasaki, BMW, Harley-Davidson...
+
+---
+
+### **4. `codebook_repair_types.py`** 🔧
+
+**Účel:** Typy oprav a servisních úkonů
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Kód (např. OV01, MOT02)
+- Název (Výměna oleje, Výměna brzd, STK příprava...)
+- Kategorie (Servis, Oprava, Diagnostika, Montáž)
+- Výchozí cena (Kč)
+- Výchozí čas (hodiny)
+- Popis
+- Aktivní
+
+**Funkce:**
+- CRUD operace
+- Kategorizace úkonů
+- Kalkulace ceny podle času
+- Propojení s hodinovými sazbami
+- Šablony pro rychlé zakázky
+
+**Příklady:**
+- Výměna oleje a filtru - 1h - 800 Kč
+- Výměna brzdových destiček - 2h - 1500 Kč
+- Diagnostika závady - 0.5h - 600 Kč
+- Geometrie kol - 1.5h - 1200 Kč
+
+---
+
+### **5. `codebook_units.py`** 📏
+
+**Účel:** Měrné jednotky pro sklad a fakturaci
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Kód (ks, l, kg, m, h)
+- Název (kus, litr, kilogram, metr, hodina)
+- Zkratka
+- Desetinná místa (0, 1, 2, 3)
+- Aktivní
+
+**Výchozí jednotky:**
+- ks - kus (0 des. míst)
+- l - litr (2 des. míst)
+- kg - kilogram (3 des. míst)
+- m - metr (2 des. míst)
+- h - hodina (2 des. míst)
+- ml - mililitr (0 des. míst)
+- g - gram (0 des. míst)
+- cm - centimetr (1 des. míst)
+- bal - balení (0 des. míst)
+- sada - sada (0 des. míst)
+
+---
+
+### **6. `codebook_currencies.py`** 💱
+
+**Účel:** Měny pro fakturaci
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Kód ISO (CZK, EUR, USD)
+- Název (Česká koruna, Euro, Americký dolar)
+- Symbol (Kč, €, $)
+- Pozice symbolu (před/za)
+- Desetinná místa (2)
+- Kurz vůči CZK
+- Výchozí měna (ano/ne)
+- Aktivní
+
+**Výchozí měny:**
+- CZK - Česká koruna - Kč (výchozí)
+- EUR - Euro - € (kurz ~25 CZK)
+- USD - Americký dolar - $ (kurz ~23 CZK)
+
+**Funkce:**
+- Aktualizace kurzů (manuální nebo API ČNB)
+- Přepočet částek
+- Historie kurzů
+
+---
+
+### **7. `codebook_positions.py`** 👷
+
+**Účel:** Pracovní pozice zaměstnanců
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Kód (MECH, DIAG, ADMIN, VED)
+- Název (Mechanik, Diagnostik, Administrativní pracovník, Vedoucí servisu)
+- Popis
+- Hodinová sazba (výchozí)
+- Přístupová práva (level 1-5)
+- Aktivní
+
+**Příklady pozic:**
+- Mechanik - základní opravy
+- Senior mechanik - složité opravy
+- Diagnostik - elektronika, diagnostika
+- Lakýrník - lakýrnické práce
+- Administrativní pracovník - fakturace, příjem
+- Vedoucí servisu - management
+- Učeň - asistence
+
+**Funkce:**
+- CRUD operace
+- Přiřazení k uživatelům
+- Oprávnění podle pozice
+- Report práce podle pozic
+
+---
+
+### **8. `codebook_hourly_rates.py`** ⏱️
+
+**Účel:** Hodinové sazby pro práci
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Název (Mechanik - standardní, Diagnostika, Lakýrnictví)
+- Pozice (FK na positions)
+- Sazba bez DPH (Kč/h)
+- Sazba s DPH (Kč/h)
+- DPH sazba (%)
+- Platná od (datum)
+- Platná do (datum nebo NULL)
+- Aktivní
+
+**Příklady:**
+- Mechanik - standardní: 800 Kč/h
+- Mechanik - víkend: 1200 Kč/h
+- Diagnostika: 1000 Kč/h
+- Lakýrnictví: 900 Kč/h
+- Elektrikář: 1100 Kč/h
+
+**Funkce:**
+- CRUD operace
+- Historie sazeb (platnost od-do)
+- Různé sazby pro různé typy práce
+- Automatický výpočet do zakázek
+- Víkendové/noční příplatky
+
+---
+
+### **9. `codebook_customer_groups.py`** 👥
+
+**Účel:** Skupiny zákazníků pro slevy a speciální podmínky
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Kód (STD, VIP, FIREMNI, POJISTOVNA)
+- Název (Standardní, VIP, Firemní zákazník, Pojišťovna)
+- Sleva na práci (%)
+- Sleva na materiál (%)
+- Splatnost faktur (dní)
+- Kreditní limit (Kč)
+- Priorita (1-5)
+- Barva (pro vizuální rozlišení)
+- Popis
+- Aktivní
+
+**Příklady skupin:**
+- Standardní: 0% sleva, 14 dní splatnost
+- VIP zákazník: 10% sleva, 30 dní splatnost
+- Firemní zákazník: 15% sleva, 45 dní splatnost
+- Pojišťovna: speciální ceny, 60 dní splatnost
+- Věrný zákazník: 5% sleva
+- Zaměstnanec: 20% sleva
+
+**Funkce:**
+- CRUD operace
+- Automatická aplikace slev
+- Přiřazení zákazníkům
+- Statistiky podle skupin
+- Pravidla pro povýšení do vyšší skupiny
+
+---
+
+### **10. `codebook_payment_methods.py`** 💳
+
+**Účel:** Způsoby úhrady
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Kód (BANK, CASH, CARD, DOB)
+- Název (Bankovní převod, Hotovost, Platební karta, Dobírka)
+- Popis
+- Poplatek (% nebo fixní)
+- Výchozí (ano/ne)
+- Aktivní
+
+**Příklady:**
+- Bankovní převod - 0% poplatek
+- Hotovost - 0% poplatek
+- Platební karta - 1.5% poplatek
+- Dobírka - 50 Kč poplatek
+- Faktura (firemní) - 0% poplatek
+
+---
+
+### **11. `codebook_vat_rates.py`** 📊
+
+**Účel:** Sazby DPH
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Název (Základní, Snížená, Osvobozeno)
+- Sazba (%)
+- Popis
+- Platná od
+- Platná do
+- Výchozí (ano/ne)
+- Aktivní
+
+**Výchozí sazby (ČR 2025):**
+- Základní sazba: 21%
+- Snížená sazba: 12%
+- Osvobozeno: 0%
+
+**Funkce:**
+- Historie změn sazeb
+- Automatická aplikace v fakturách
+- Validace podle data zdanitelného plnění
+
+---
+
+### **12. `codebook_order_statuses.py`** 📋
+
+**Účel:** Stavy zakázek
+
+**Obsahuje:**
+
+**Tabulka:**
+- ID
+- Kód (PREP, INPROG, WAIT, DONE, INV, PAID)
+- Název (V přípravě, V práci, Čeká na díly, Dokončeno, Fakturováno, Zaplaceno)
+- Barva (#hexcolor)
+- Ikona (emoji)
+- Pořadí (pro workflow)
+- Povolené přechody (JSON)
+- Notifikace zákazníka (ano/ne)
+- Aktivní
+
+**Workflow příklad:**
+```
+V přípravě → V práci → Čeká na díly → V práci → Dokončeno → Fakturováno → Zaplaceno

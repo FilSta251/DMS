@@ -1,0 +1,493 @@
+### **2. `module_administration.py`** ⭐ HLAVNÍ SOUBOR
+
+**Účel:** Hlavní vstupní bod modulu administrativa
+
+**Obsahuje:**
+- Hlavní okno s postranním menu
+- Přepínání mezi sekcemi
+- Horní lišta s rychlými akcemi
+- Přehled nevyřízených položek
+- Navigace mezi sekcemi
+
+**Sekce:**
+- 📄 **Faktury vydané** (naše faktury zákazníkům)
+- 📥 **Faktury přijaté** (faktury od dodavatelů)
+- 💳 **Platby** (přehled plateb a pohledávek)
+- 📋 **Dokumenty** (smlouvy, protokoly, certifikáty)
+- 💰 **Účetnictví** (přehledy, výkazy)
+- 📊 **DPH a daně** (přehledy DPH, daňové výkazy)
+- 📈 **Reporty** (finanční reporty, analýzy)
+- ⚙️ **Nastavení** (šablony, čísla dokladů)
+
+---
+
+### **3. `admin_invoices.py`** 📄
+
+**Účel:** Správa faktur (vydaných i přijatých)
+
+**Obsahuje:**
+- **Seznam všech faktur**
+  - Číslo faktury, zákazník/dodavatel, datum vystavení, splatnost, částka, stav
+  - Barevné odlišení: Zaplaceno (zelená), Po splatnosti (červená), Nezaplaceno (oranžová)
+
+- **Filtry:**
+  - Typ faktury (vydané/přijaté)
+  - Stav (zaplacené, nezaplacené, po splatnosti)
+  - Období (týden, měsíc, rok, vlastní)
+  - Zákazník/dodavatel
+  - Zakázka
+
+- **Funkce:**
+  - Vytvoření nové faktury
+  - Párování faktury se zakázkou
+  - Označení jako zaplaceno
+  - Storno faktury
+  - Dobropis
+  - Opakující se faktury (pravidelné platby)
+
+- **Quick stats:**
+  - Celková částka faktur za období
+  - Nezaplacené faktury
+  - Po splatnosti
+  - Průměrná doba splatnosti
+
+- **Tlačítka:**
+  - ➕ Nová faktura
+  - 📧 Odeslat email
+  - 🖨️ Tisk
+  - 📤 Export
+  - 💳 Zaznamenat platbu
+
+---
+
+### **4. `admin_invoice_detail.py`** 📝
+
+**Účel:** Detail a editace faktury
+
+**Obsahuje:**
+
+**Záložka: Základní údaje**
+- Číslo faktury (automatické/manuální)
+- Typ (vydaná/přijatá)
+- Datum vystavení, splatnosti, zdanitelného plnění
+- Zákazník/dodavatel (výběr ze seznamu + quick add)
+- Forma úhrady (hotovost, převod, karta)
+- Variabilní symbol
+- Poznámka
+
+**Záložka: Položky faktury**
+- Tabulka položek:
+  - Název, množství, jednotka, cena bez DPH, DPH %, cena s DPH
+  - Tlačítka: ➕ Přidat položku, ➖ Odebrat, Import ze zakázky
+- Automatický výpočet součtů
+- Různé sazby DPH (0%, 12%, 21%)
+
+**Záložka: Platby**
+- Historie plateb
+- Částečné platby
+- Párování s bankovním výpisem
+- Zbývá uhradit
+
+**Záložka: Dokumenty**
+- PDF faktury (generovaná)
+- Naskenované faktury (přílohy)
+- Daňové doklady
+- Dodací list
+
+**Záložka: Historie**
+- Kdy vystaveno, kým
+- Kdy odesláno zákazníkovi
+- Kdy zaplaceno
+- Změny (audit log)
+
+**Tlačítka:**
+- 💾 Uložit
+- 🖨️ Tisk
+- 📧 Odeslat emailem
+- 📄 Kopírovat fakturu
+- ❌ Storno/Dobropis
+
+---
+
+### **5. `admin_payments.py`** 💳
+
+**Účel:** Správa plateb a pohledávek
+
+**Obsahuje:**
+
+**Sekce: Přehled plateb**
+- Seznam všech plateb (příchozí, odchozí)
+- Datum platby, částka, typ, účel, spárováno s fakturou
+- Filtry: Období, typ platby, stav
+
+**Sekce: Pohledávky**
+- Kdo nám dluží
+- Výše dluhu
+- Počet dní po splatnosti
+- Upomínky (1., 2., 3.)
+- Tlačítko: Odeslat upomínku
+
+**Sekce: Závazky**
+- Komu my dlužíme
+- Výše závazku
+- Datum splatnosti
+- Priorita platby
+
+**Funkce:**
+- Import bankovních výpisů (CSV, PDF)
+- Automatické párování plateb s fakturami
+- Vytvoření upomínek
+- Predikce cash flow
+
+**Statistiky:**
+- Celkové pohledávky
+- Celkové závazky
+- Průměrná doba inkasa
+- Poměr po splatnosti %
+
+---
+
+### **6. `admin_documents.py`** 📋
+
+**Účel:** Správa všech dokumentů
+
+**Obsahuje:**
+
+**Typy dokumentů:**
+- 📄 Smlouvy (servisní, rámcové, pronájem)
+- 📋 Protokoly (předávací, škodní)
+- 📜 Certifikáty (STK, emise)
+- 📝 Plné moci
+- 📑 Objednávky (od zákazníků, pro dodavatele)
+- 📊 Výkazy (měsíční, roční)
+
+**Funkce:**
+- Upload dokumentů (PDF, Word, obrázky)
+- Kategorizace a štítkování
+- Vyhledávání (full-text)
+- Propojení se zakázkou/zákazníkem/vozidlem
+- Šablony dokumentů
+- Automatické vyplnění dat
+- Elektronický podpis (volitelně)
+
+**Tabulka dokumentů:**
+- Název, typ, kategorie, datum, propojení, velikost, akce
+- Náhled dokumentu v aplikaci
+
+**Tlačítka:**
+- ➕ Nový dokument
+- 📤 Upload
+- 📝 Ze šablony
+- 🖨️ Tisk
+- 📧 Odeslat
+
+---
+
+### **7. `admin_accounting.py`** 💰
+
+**Účel:** Účetní přehledy a výkazy
+
+**Obsahuje:**
+
+**Sekce: Přehled účetnictví**
+- Výběr období
+- Celkové příjmy (z faktur, hotovostní prodej, ostatní)
+- Celkové výdaje (nákup materiálu, mzdy, provoz, ostatní)
+- Zisk/ztráta
+- Marže %
+
+**Sekce: Peněžní toky**
+- Cash flow přehled
+- Příjmy: z faktur, hotovost, bankovní účet
+- Výdaje: dodavatelé, mzdy, ostatní
+- Stav pokladny
+- Stav na účtu
+
+**Sekce: Nákladové středisko**
+- Rozdělení nákladů podle kategorií
+- Koláčový graf nákladů
+- Tabulka s detaily
+
+**Sekce: Přehledy pro účetní**
+- Výpis pohledávek
+- Výpis závazků
+- Sklad - hodnota
+- Export pro účetní software
+
+**Grafy:**
+- Vývoj příjmů/výdajů v čase
+- Marže podle typu zakázek
+- Rentabilita
+
+**Exporty:**
+- Excel tabulky
+- CSV pro import do účetních systémů
+- PDF reporty
+
+---
+
+### **8. `admin_tax.py`** 📊
+
+**Účel:** DPH a daňové přehledy
+
+**Obsahuje:**
+
+**Sekce: DPH přehled**
+- Výběr období (měsíc, čtvrtletí)
+- Daňová povinnost:
+  - DPH na výstupu (z našich faktur)
+  - DPH na vstupu (z přijatých faktur)
+  - DPH k úhradě / nadměrný odpočet
+
+**Tabulky:**
+- Seznam faktur s DPH (vydané)
+- Seznam faktur s DPH (přijaté)
+- Rozdělení podle sazeb (0%, 12%, 21%)
+
+**Kontrolní výpočty:**
+- Celková částka bez DPH
+- Celková částka DPH
+- Celková částka s DPH
+- Kontrolní součet
+
+**Sekce: Daňové doklady**
+- Seznam všech daňových dokladů
+- Ochrana před duplikáty
+- Číselné řady
+
+**Export:**
+- Export pro daňové přiznání
+- XML export pro FINANČNÍ SPRÁVU (pokud je to potřeba)
+- Excel přehledy
+
+**Funkce:**
+- Automatický výpočet DPH povinnosti
+- Upozornění na blížící se termín podání
+- Archiv minulých přiznání
+
+---
+
+### **9. `admin_reports.py`** 📈
+
+**Účel:** Finanční reporty a analýzy
+
+**Obsahuje:**
+
+**Typy reportů:**
+- 📊 Měsíční report (přehled za měsíc)
+- 📅 Čtvrtletní report
+- 📆 Roční report (pro management, daně)
+- 📈 Vlastní report (výběr období)
+
+**Obsah reportu:**
+- Executive summary (klíčové body)
+- Finanční metriky:
+  - Obrat celkem
+  - Náklady celkem
+  - Zisk/ztráta
+  - Marže %
+  - ROI (návratnost investic)
+- Porovnání s předchozím obdobím
+- Trendy a predikce
+- Tabulky a grafy
+- Top zákazníci podle obratu
+- Top zakázky podle marže
+
+**Funkce:**
+- Generování reportu na vyžádání
+- Automatické zasílání emailem (měsíční)
+- Export do PDF (profesionální vzhled)
+- Export do Excel (pro další analýzy)
+- Export do PowerPoint (prezentace)
+
+**Šablony reportů:**
+- Pro majitele (high-level)
+- Pro management (detailní)
+- Pro účetní (technický)
+
+---
+
+### **10. `admin_exports.py`** 📤
+
+**Účel:** Exporty dat a dokumentů
+
+**Obsahuje:**
+
+**Sekce: Export faktur**
+- PDF faktury (jednotlivé nebo hromadné)
+- Export faktur do Excelu
+- Export pro účetní software
+- Formáty: PDF, Excel, CSV, XML
+
+**Sekce: Export plateb**
+- Export plateb do Excelu
+- CSV pro import do banky
+- Přehled pohledávek/závazků
+
+**Sekce: Export účetních dat**
+- Kompletní export účetnictví za období
+- Excel s více listy (faktury, platby, DPH)
+- CSV pro účetní systémy (Pohoda, Money, ABRA)
+
+**Funkce:**
+- Hromadný export
+- Plánované exporty (automatické)
+- Šablony exportů
+- Preview před exportem
+
+---
+
+### **11. `admin_templates.py`** 🎨
+
+**Účel:** Šablony faktur a dokumentů
+
+**Obsahuje:**
+
+**Správa šablon:**
+- Šablony faktur (různé styly)
+- Šablony smluv
+- Šablony protokolů
+- Šablony upomínek
+- Vlastní hlavičky/patičky
+
+**Editor šablon:**
+- Visual editor (WYSIWYG)
+- Proměnné ({{nazev_firmy}}, {{ic}}, {{datum}})
+- Logo firmy
+- Barvy a fonty
+- Podmíněné texty (např. "Pokud po splatnosti...")
+
+**Náhled:**
+- Live preview šablony
+- Test s ukázkovými daty
+- Responzivní PDF
+
+**Funkce:**
+- Import/export šablon
+- Výchozí šablona
+- Šablona pro různé typy zákazníků
+
+---
+
+### **12. `admin_widgets.py`** 🧩
+
+**Účel:** Dialogy, widgety a komponenty
+
+**Obsahuje:**
+
+**Dialogy:**
+- `InvoiceDialog` - vytvoření/editace faktury
+- `PaymentDialog` - záznam platby
+- `ReminderDialog` - vytvoření upomínky
+- `DocumentUploadDialog` - upload dokumentu
+- `QuickInvoiceDialog` - rychlé vytvoření faktury ze zakázky
+- `InvoiceItemDialog` - přidání položky na fakturu
+- `TaxReportDialog` - generování daňového přehledu
+
+**Widgety:**
+- `InvoiceCard` - karta faktury (preview)
+- `PaymentStatus` - status platby (zaplaceno/nezaplaceno)
+- `TaxCalculator` - kalkulátor DPH
+- `CashFlowWidget` - graf cash flow
+- `DebtorsList` - seznam dlužníků
+
+**Tabulky:**
+- `InvoiceTable` - tabulka faktur s filtry
+- `PaymentTable` - tabulka plateb
+- `DocumentsTable` - tabulka dokumentů
+
+---
+
+### **13. `admin_settings.py`** ⚙️
+
+**Účel:** Nastavení modulu administrativa
+
+**Obsahuje:**
+
+**Sekce: Firemní údaje**
+- Název firmy
+- IČO, DIČ
+- Adresa, kontakty
+- Logo firmy
+- Bankovní spojení
+- Registrace (OR, DPH)
+
+**Sekce: Číselné řady**
+- Formát čísel faktur (FV2025001, FAK-2025-001)
+- Prefix, počáteční číslo
+- Samostatné řady (vydané, přijaté, dobropisy)
+- Reset každý rok
+
+**Sekce: Splatnosti**
+- Výchozí splatnost faktur (14, 21, 30 dní)
+- Výchozí forma úhrady
+- Penále z prodlení (% denně)
+
+**Sekce: DPH**
+- Plátce DPH (ano/ne)
+- Sazby DPH (21%, 12%, 0%)
+- Výchozí sazba
+
+**Sekce: Emaily**
+- Šablony emailů (faktura, upomínka)
+- Automatické zasílání faktur
+- CC, BCC
+
+**Sekce: Notifikace**
+- Upozornit na blížící se splatnost (3 dny předem)
+- Upozornit na po splatnosti
+- Denní/týdenní souhrn
+
+---
+
+## 🎨 VIZUALIZACE STRUKTURY
+```
+📊 MODUL ADMINISTRATIVA
+│
+├─ 📄 Faktury vydané
+│  ├─ 📝 Detail faktury
+│  ├─ ➕ Nová faktura
+│  ├─ 📤 Export/Tisk
+│  └─ 💳 Platby
+│
+├─ 📥 Faktury přijaté
+│  ├─ 📝 Detail faktury
+│  ├─ ➕ Nová faktura
+│  └─ 💳 Platby
+│
+├─ 💳 Platby & Pohledávky
+│  ├─ 💰 Přehled plateb
+│  ├─ 📊 Pohledávky
+│  ├─ 📉 Závazky
+│  └─ 📧 Upomínky
+│
+├─ 📋 Dokumenty
+│  ├─ 📄 Smlouvy
+│  ├─ 📜 Certifikáty
+│  ├─ 📝 Protokoly
+│  └─ 🎨 Šablony
+│
+├─ 💰 Účetnictví
+│  ├─ 💵 Příjmy/výdaje
+│  ├─ 📊 Cash flow
+│  ├─ 📈 Zisk/ztráta
+│  └─ 📤 Export pro účetní
+│
+├─ 📊 DPH & Daně
+│  ├─ 📋 DPH přehled
+│  ├─ 📊 Daňové doklady
+│  ├─ 📅 Přiznání
+│  └─ 📤 Export pro FÚ
+│
+├─ 📈 Reporty
+│  ├─ 📄 Měsíční report
+│  ├─ 📅 Čtvrtletní report
+│  ├─ 📆 Roční report
+│  └─ 📤 Export PDF/Excel
+│
+└─ ⚙️ Nastavení
+   ├─ 🏢 Firemní údaje
+   ├─ 🔢 Číselné řady
+   ├─ 💳 Splatnosti
+   ├─ 📊 DPH nastavení
+   └─ 📧 Email šablony

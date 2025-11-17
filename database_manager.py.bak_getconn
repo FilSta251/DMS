@@ -1,0 +1,1695 @@
+# -*- coding: utf-8 -*-
+"""
+Motoservis DMS – produkční správce databáze
+- Bezpečné připojení (PRAGMA, WAL, busy timeout)
+- Idempotentní migrace schématu (tabulky + sloupce)
+- Legacy aliasy sloupců (order_date, order_id, purchase_price, ...)
+- Jedna verze order_items + odolná migrace starých struktur
+- Sekvence čísel zakázek (bez kolizí) + helper na generování
+- Modul administrativa (faktury, platby, dokumenty)
+- Modul kalendář (kompletní)
+- Modul users (role, oprávnění, audit)
+- Sanity check po migraci
+"""
+
+from __future__ import annotations
+import sqlite3
+import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Iterable, Tuple
+import config
+
+
+class DatabaseManager:
+    """Správce databáze pro Motoservis DMS (produkční)"""
+
+    def __init__(self):
+        self.db_path: str | Path = config.DATABASE_PATH
+        self.connection: Optional[sqlite3.Connection] = None
+        self.cursor: Optional[sqlite3.Cursor] = None
+
+    # -----------------------
+    # Připojení / odpojení
+    # -----------------------
+    def connect(self) -> bool:
+        """Připojení k databázi + doporučené PRAGMA pro SQLite."""
+        try:
+            self.connection = sqlite3.connect(self.db_path, timeout=10.0)
+            self.connection.row_factory = sqlite3.Row
+            self.cursor = self.connection.cursor()
+
+            self.cursor.execute("PRAGMA foreign_keys = ON;")
+            self.cursor.execute("PRAGMA journal_mode = WAL;")
+            self.cursor.execute("PRAGMA synchronous = NORMAL;")
+            self.cursor.execute("PRAGMA busy_timeout = 5000;")
+
+            return True
+        except Exception as e:
+            print(f"Chyba připojení k databázi: {e}")
+            return False
+
+    def disconnect(self):
+        """Odpojení od databáze."""
+        if self.connection:
+            self.connection.close()
+        self.connection = None
+        self.cursor = None
+
+    # -----------------------
+    # Pomocné dotazy pro migrace
+    # -----------------------
+    def _table_exists(self, table: str) -> bool:
+        self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table,),
+        )
+        return self.cursor.fetchone() is not None
+
+    def _columns(self, table: str) -> set[str]:
+        self.cursor.execute(f"PRAGMA table_info({table});")
+        return {r["name"] for r in self.cursor.fetchall()}
+
+    def _table_pk(self, table: str) -> Optional[str]:
+        """Vrátí jméno sloupce, který je PK (pokud existuje)."""
+        self.cursor.execute(f"PRAGMA table_info({table});")
+        for r in self.cursor.fetchall():
+            if r["pk"]:
+                return r["name"]
+        return None
+
+    def _ensure_columns(self, table: str, add_specs: Iterable[Tuple[str, str]]):
+        """Bezpečně přidá chybějící sloupce (ALTER TABLE ADD COLUMN)."""
+        current = self._columns(table) if self._table_exists(table) else set()
+        for col, col_def in add_specs:
+            if col not in current:
+                self.cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def};")
+
+    def _recreate_table(self, table: str, create_sql: str, copy_sql: str):
+        """
+        Bezpečná přestavba tabulky:
+        1) RENAME to _old
+        2) CREATE new
+        3) INSERT ... SELECT ...
+        4) DROP _old
+        """
+        old = f"{table}_old"
+        self.cursor.execute(f"ALTER TABLE {table} RENAME TO {old};")
+        self.cursor.execute(create_sql)
+        self.cursor.execute(copy_sql)
+        self.cursor.execute(f"DROP TABLE {old};")
+
+    # -----------------------
+    # Schéma + migrace
+    # -----------------------
+    def create_tables(self):
+        """Vytvoření/migrace schématu – idempotentně a odolně."""
+
+        # ==========================================
+        # === 1) ZÁKAZNÍCI ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                company TEXT,
+                phone TEXT,
+                email TEXT,
+                address TEXT,
+                city TEXT,
+                postal_code TEXT,
+                ico TEXT,
+                dic TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Přidej chybějící sloupce pro kompatibilitu s UI
+        self._ensure_columns("customers", [
+            ("customer_type", "TEXT DEFAULT 'fyzická'"),
+            ("is_active", "INTEGER DEFAULT 1"),
+            ("customer_group", "TEXT"),
+            ("has_debt", "INTEGER DEFAULT 0"),
+            ("customer_group_id", "INTEGER REFERENCES codebook_customer_groups(id)"),
+            ("discount_percent", "REAL DEFAULT 0"),
+            ("credit_limit", "REAL DEFAULT 0"),
+            ("payment_terms", "INTEGER DEFAULT 14"),
+            ("preferred_contact", "TEXT DEFAULT 'email'"),
+            ("gdpr_consent", "INTEGER DEFAULT 0"),
+            ("gdpr_consent_date", "TEXT"),
+            ("marketing_consent", "INTEGER DEFAULT 0"),
+            ("last_visit", "TEXT"),
+            ("total_orders", "INTEGER DEFAULT 0"),
+            ("total_spent", "REAL DEFAULT 0"),
+        ])
+
+        # ==========================================
+        # === 2) VOZIDLA ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vehicles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_id INTEGER,
+                brand TEXT NOT NULL,
+                model TEXT NOT NULL,
+                license_plate TEXT UNIQUE NOT NULL,
+                vin TEXT,
+                year INTEGER,
+                color TEXT,
+                engine_type TEXT,
+                fuel_type TEXT,
+                mileage INTEGER,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers (id)
+            )
+        """)
+        # Přidej chybějící sloupce pro kompatibilitu s UI
+        self._ensure_columns("vehicles", [
+            ("stk_valid_until", "TEXT"),
+            ("insurance_valid_until", "TEXT"),
+            ("last_service_date", "TEXT"),
+            ("next_service_date", "TEXT"),
+            ("next_service_mileage", "INTEGER"),
+            ("is_active", "INTEGER DEFAULT 1"),
+            ("vehicle_type", "TEXT DEFAULT 'motorcycle'"),
+            ("engine_capacity", "INTEGER"),
+            ("power_kw", "REAL"),
+            ("transmission", "TEXT"),
+            ("tire_size_front", "TEXT"),
+            ("tire_size_rear", "TEXT"),
+            ("oil_type", "TEXT"),
+            ("oil_capacity", "REAL"),
+            ("coolant_type", "TEXT"),
+            ("brake_fluid_type", "TEXT"),
+            ("service_interval_km", "INTEGER"),
+            ("service_interval_months", "INTEGER"),
+        ])
+
+        # ==========================================
+        # === 3) UŽIVATELÉ ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                full_name TEXT NOT NULL,
+                email TEXT,
+                role TEXT DEFAULT 'mechanik',
+                active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            )
+        """)
+        # Legacy aliasy (u.user_id, u.name)
+        self._ensure_columns("users", [
+            ("user_id", "INTEGER"),
+            ("name", "TEXT"),
+            ("phone", "TEXT"),
+            ("note", "TEXT"),
+            ("login_count", "INTEGER DEFAULT 0"),
+            ("updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        ])
+        self.cursor.execute("UPDATE users SET user_id = id WHERE user_id IS NULL;")
+        self.cursor.execute("UPDATE users SET name = full_name WHERE name IS NULL;")
+
+        # ==========================================
+        # === 4) ROLE A OPRÁVNĚNÍ ===
+        # ==========================================
+        
+        # Role uživatelů
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT,
+                is_default INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Zajisti že existuje sloupec description (pro staré databáze)
+        self._ensure_columns("roles", [
+            ("description", "TEXT"),
+            ("is_default", "INTEGER DEFAULT 0"),
+            ("title", "TEXT"),
+            ("color", "TEXT"),
+            ("priority", "INTEGER DEFAULT 0"),
+        ])
+        # Synchronizuj title s name pokud je prázdný
+        self.cursor.execute("UPDATE roles SET title = name WHERE title IS NULL OR title = '';")
+
+        # Definice oprávnění (modul + akce)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS permissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                module_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                description TEXT,
+                UNIQUE(module_id, action)
+            )
+        """)
+
+        # Oprávnění přiřazená rolím
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS role_permissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role_id INTEGER NOT NULL,
+                permission_id INTEGER NOT NULL,
+                allowed INTEGER DEFAULT 1,
+                FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+                FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
+                UNIQUE(role_id, permission_id)
+            )
+        """)
+
+        # Uživatelské výjimky oprávnění
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_permissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                permission_id INTEGER NOT NULL,
+                allowed INTEGER DEFAULT 1,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
+                UNIQUE(user_id, permission_id)
+            )
+        """)
+
+        # ==========================================
+        # === 5) PŘIHLÁŠENÍ UŽIVATELŮ (OPRAVENO!) ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_logins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ip_address TEXT,
+                success INTEGER DEFAULT 1,
+                note TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_logins_user ON user_logins(user_id);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_logins_time ON user_logins(login_time);")
+
+        # ==========================================
+        # === 6) AUDIT LOG ===
+        # ==========================================
+        audit_log_sql = """
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                username TEXT,
+                event_type TEXT NOT NULL,
+                details TEXT,
+                ip_address TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+            )
+        """
+        
+        if not self._table_exists("audit_log"):
+            self.cursor.execute(audit_log_sql)
+        else:
+            # Migrace staré tabulky - zkontroluj sloupce
+            old_cols = self._columns("audit_log")
+            required_cols = {"user_id", "username", "event_type", "details", "ip_address", "created_at"}
+            
+            if not required_cols.issubset(old_cols):
+                # Přestavba tabulky
+                self.cursor.execute("ALTER TABLE audit_log RENAME TO audit_log_old;")
+                self.cursor.execute(audit_log_sql)
+                
+                # Kopírování dat
+                old = self._columns("audit_log_old")
+                expr_user_id = "user_id" if "user_id" in old else "NULL"
+                expr_username = "username" if "username" in old else "NULL"
+                expr_event_type = "event_type" if "event_type" in old else ("action" if "action" in old else "'unknown'")
+                expr_details = "details" if "details" in old else ("description" if "description" in old else "NULL")
+                expr_ip = "ip_address" if "ip_address" in old else "NULL"
+                expr_created = "created_at" if "created_at" in old else ("timestamp" if "timestamp" in old else "CURRENT_TIMESTAMP")
+                
+                copy_sql = f"""
+                    INSERT INTO audit_log (user_id, username, event_type, details, ip_address, created_at)
+                    SELECT {expr_user_id}, {expr_username}, {expr_event_type}, {expr_details}, {expr_ip}, {expr_created}
+                    FROM audit_log_old;
+                """
+                try:
+                    self.cursor.execute(copy_sql)
+                except Exception:
+                    pass  # Ignoruj chyby při kopírování dat
+                
+                self.cursor.execute("DROP TABLE audit_log_old;")
+                print("✅ Tabulka audit_log migrována na novou strukturu")
+        
+        # Indexy - vytvoř jen pokud sloupce existují
+        if "user_id" in self._columns("audit_log"):
+            self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);")
+        if "event_type" in self._columns("audit_log"):
+            self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_type ON audit_log(event_type);")
+        if "created_at" in self._columns("audit_log"):
+            self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_date ON audit_log(created_at);")
+
+        # ==========================================
+        # === 7) ZAKÁZKY ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_number TEXT UNIQUE NOT NULL,
+                order_type TEXT NOT NULL DEFAULT 'Zakázka',
+                status TEXT NOT NULL DEFAULT 'V přípravě',
+                customer_id INTEGER NOT NULL,
+                vehicle_id INTEGER,
+                created_date DATE NOT NULL,
+                completed_date DATE,
+                total_price REAL DEFAULT 0,
+                note TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers (id),
+                FOREIGN KEY (vehicle_id) REFERENCES vehicles (id)
+            )
+        """)
+        # Legacy aliasy pro orders
+        self._ensure_columns("orders", [
+            ("material_cost", "REAL DEFAULT 0"),
+            ("order_date", "TEXT"),
+            ("order_id", "TEXT"),
+            ("customer_name", "TEXT"),
+            ("vehicle_info", "TEXT")
+        ])
+        self.cursor.execute("UPDATE orders SET order_date = created_date WHERE order_date IS NULL;")
+        self.cursor.execute("UPDATE orders SET order_id = order_number WHERE order_id IS NULL;")
+
+        # Malý commit, ať jsou definice jistě zapsané
+        self.connection.commit()
+
+        # ==========================================
+        # === 8) ZÁZNAM PRÁCE NA ZAKÁZKÁCH ===
+        # ==========================================
+        self._ensure_order_work_log_schema()
+
+        # ==========================================
+        # === 9) SKLAD - ČÍSELNÍKY ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS warehouse_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                parent_id INTEGER REFERENCES warehouse_categories(id) ON DELETE SET NULL,
+                color TEXT,
+                description TEXT
+            )
+        """)
+
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS warehouse_suppliers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE
+            )
+        """)
+        self._ensure_columns("warehouse_suppliers", [
+            ("ico", "TEXT"), ("dic", "TEXT"), ("contact_person", "TEXT"),
+            ("phone", "TEXT"), ("email", "TEXT"), ("web", "TEXT"),
+            ("street", "TEXT"), ("city", "TEXT"), ("postal_code", "TEXT"),
+            ("country", "TEXT"), ("payment_terms", "TEXT"),
+            ("bank_account", "TEXT"), ("note", "TEXT")
+        ])
+
+        # ==========================================
+        # === 10) SKLAD - HLAVNÍ TABULKA ===
+        # ==========================================
+        warehouse_create_sql = """
+            CREATE TABLE IF NOT EXISTS warehouse (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                unit TEXT DEFAULT 'ks',
+                quantity REAL DEFAULT 0,
+                min_quantity REAL DEFAULT 0,
+                price_purchase REAL,
+                price_sale REAL,
+                category_id INTEGER REFERENCES warehouse_categories(id) ON DELETE SET NULL,
+                supplier_id INTEGER REFERENCES warehouse_suppliers(id) ON DELETE SET NULL,
+                ean TEXT,
+                location TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        if not self._table_exists("warehouse"):
+            self.cursor.execute(warehouse_create_sql)
+        else:
+            cols = self._columns("warehouse")
+            need_rebuild = not {"category_id", "supplier_id"}.issubset(cols)
+            if need_rebuild:
+                self._recreate_table(
+                    "warehouse",
+                    warehouse_create_sql,
+                    """
+                    INSERT INTO warehouse
+                        (id, code, name, description, unit, quantity, min_quantity,
+                         price_purchase, price_sale, category_id, supplier_id, ean,
+                         location, notes, created_at, updated_at)
+                    SELECT
+                        id, code, name, description, unit, quantity, min_quantity,
+                        price_purchase, price_sale,
+                        NULL AS category_id, NULL AS supplier_id,
+                        NULL AS ean,
+                        location, notes, created_at, updated_at
+                    FROM warehouse_old;
+                    """
+                )
+            else:
+                self._ensure_columns("warehouse", [("ean", "TEXT")])
+
+        # Legacy alias ve skladu
+        self._ensure_columns("warehouse", [("purchase_price", "REAL")])
+        self.cursor.execute("""
+            UPDATE warehouse SET purchase_price = price_purchase
+            WHERE purchase_price IS NULL;
+        """)
+
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_warehouse_code ON warehouse(code);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_warehouse_category ON warehouse(category_id);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_warehouse_supplier ON warehouse(supplier_id);")
+
+        # ==========================================
+        # === 11) POHYBY SKLADU ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS warehouse_movements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                movement_date TEXT NOT NULL,
+                qty_change REAL NOT NULL,
+                reason TEXT,
+                FOREIGN KEY (item_id) REFERENCES warehouse(id) ON DELETE CASCADE
+            )
+        """)
+        self.cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_movements_item_date
+            ON warehouse_movements(item_id, movement_date);
+        """)
+        # Legacy aliasy
+        self._ensure_columns("warehouse_movements", [
+            ("date", "TEXT"),
+            ("quantity", "REAL")
+        ])
+        self.cursor.execute("UPDATE warehouse_movements SET date = movement_date WHERE date IS NULL;")
+        self.cursor.execute("UPDATE warehouse_movements SET quantity = qty_change WHERE quantity IS NULL;")
+
+        # ==========================================
+        # === 12) POLOŽKY ZAKÁZEK ===
+        # ==========================================
+        order_items_target_sql = """
+            CREATE TABLE IF NOT EXISTS order_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL,
+                warehouse_id INTEGER,
+                item_name TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                unit_price REAL NOT NULL,
+                total_price REAL NOT NULL,
+                item_type TEXT DEFAULT 'díl',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
+                FOREIGN KEY (warehouse_id) REFERENCES warehouse (id)
+            )
+        """
+        if not self._table_exists("order_items"):
+            self.cursor.execute(order_items_target_sql)
+        else:
+            current = self._columns("order_items")
+            expected = {
+                "id", "order_id", "warehouse_id", "item_name", "quantity",
+                "unit_price", "total_price", "item_type", "created_at"
+            }
+            if current != expected:
+                self.cursor.execute("ALTER TABLE order_items RENAME TO order_items_old;")
+                self.cursor.execute(order_items_target_sql)
+
+                old = self._columns("order_items_old")
+                expr_id         = "id" if "id" in old else "NULL"
+                expr_order_id   = "order_id" if "order_id" in old else "NULL"
+                expr_wh_id      = "warehouse_id" if "warehouse_id" in old else "NULL"
+                expr_item_name  = "item_name" if "item_name" in old else ("name" if "name" in old else "'Položka'")
+                expr_qty        = "quantity" if "quantity" in old else "1"
+
+                if "unit_price" in old:
+                    expr_unit = "unit_price"
+                elif "total_price" in old and "quantity" in old:
+                    expr_unit = "CASE WHEN quantity <> 0 THEN total_price/quantity ELSE 0 END"
+                else:
+                    expr_unit = "0"
+
+                if "total_price" in old:
+                    expr_total = "total_price"
+                elif "unit_price" in old and "quantity" in old:
+                    expr_total = "unit_price * quantity"
+                else:
+                    expr_total = "0"
+
+                expr_type      = "item_type" if "item_type" in old else "'díl'"
+                expr_created   = "created_at" if "created_at" in old else "CURRENT_TIMESTAMP"
+
+                copy_sql = f"""
+                    INSERT INTO order_items
+                        (id, order_id, warehouse_id, item_name, quantity,
+                         unit_price, total_price, item_type, created_at)
+                    SELECT
+                        {expr_id}, {expr_order_id}, {expr_wh_id}, {expr_item_name}, {expr_qty},
+                        {expr_unit}, {expr_total}, {expr_type}, {expr_created}
+                    FROM order_items_old;
+                """
+                self.cursor.execute(copy_sql)
+                self.cursor.execute("DROP TABLE order_items_old;")
+
+        # kompatibilní sloupce pro UI
+        self._ensure_columns("order_items", [
+            ("name", "TEXT"),
+            ("unit", "TEXT DEFAULT 'ks'"),
+            ("vat_rate", "REAL DEFAULT 21")
+        ])
+        self.cursor.execute("""
+            UPDATE order_items
+               SET name = COALESCE(name, item_name)
+             WHERE name IS NULL OR name = ''
+        """)
+
+        # ==========================================
+        # === 13) MODUL KALENDÁŘ - KOMPLETNÍ ===
+        # ==========================================
+
+        # NEJPRVE: Pravidla opakování (musí existovat před calendar_events kvůli FK)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_recurring_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                frequency TEXT NOT NULL,
+                interval_value INTEGER DEFAULT 1,
+                days_of_week TEXT,
+                day_of_month INTEGER,
+                end_date TEXT,
+                occurrence_count INTEGER,
+                exceptions TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Hlavní tabulka událostí kalendáře
+        calendar_events_sql = """
+            CREATE TABLE IF NOT EXISTS calendar_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                event_type TEXT NOT NULL DEFAULT 'service',
+                start_datetime TEXT NOT NULL,
+                end_datetime TEXT NOT NULL,
+                all_day INTEGER DEFAULT 0,
+                recurring_rule_id INTEGER,
+                customer_id INTEGER,
+                vehicle_id INTEGER,
+                order_id INTEGER,
+                mechanic_id INTEGER,
+                priority INTEGER DEFAULT 2,
+                color TEXT DEFAULT '#3498db',
+                status TEXT DEFAULT 'scheduled',
+                reminder_minutes INTEGER DEFAULT 60,
+                notes TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_by INTEGER,
+                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+                FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE SET NULL,
+                FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
+                FOREIGN KEY (mechanic_id) REFERENCES users(id) ON DELETE SET NULL,
+                FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+                FOREIGN KEY (recurring_rule_id) REFERENCES calendar_recurring_rules(id) ON DELETE SET NULL
+            )
+        """
+
+        if not self._table_exists("calendar_events"):
+            self.cursor.execute(calendar_events_sql)
+        else:
+            # Migrace staré struktury na novou
+            old_cols = self._columns("calendar_events")
+            needs_migration = "start_datetime" not in old_cols or "mechanic_id" not in old_cols
+
+            if needs_migration:
+                self.cursor.execute("ALTER TABLE calendar_events RENAME TO calendar_events_old;")
+                self.cursor.execute(calendar_events_sql)
+
+                # Kopírování dat ze staré struktury
+                old = self._columns("calendar_events_old")
+
+                expr_title = "title" if "title" in old else "'Událost'"
+                expr_desc = "description" if "description" in old else "NULL"
+                expr_type = "event_type" if "event_type" in old else "'service'"
+
+                if "date" in old and "time_from" in old:
+                    expr_start = "date || ' ' || COALESCE(time_from, '08:00')"
+                    expr_end = "date || ' ' || COALESCE(time_to, '09:00')"
+                elif "start_datetime" in old:
+                    expr_start = "start_datetime"
+                    expr_end = "end_datetime" if "end_datetime" in old else "start_datetime"
+                else:
+                    expr_start = "datetime('now')"
+                    expr_end = "datetime('now', '+1 hour')"
+
+                expr_all_day = "all_day" if "all_day" in old else "0"
+                expr_recurring = "recurring_rule_id" if "recurring_rule_id" in old else "NULL"
+                expr_customer = "customer_id" if "customer_id" in old else "NULL"
+                expr_vehicle = "vehicle_id" if "vehicle_id" in old else "NULL"
+                expr_order = "order_id" if "order_id" in old else "NULL"
+                expr_mechanic = "mechanic_id" if "mechanic_id" in old else "NULL"
+                expr_priority = "priority" if "priority" in old else "2"
+                expr_color = "color" if "color" in old else "'#3498db'"
+                expr_status = "status" if "status" in old else "'scheduled'"
+                expr_reminder = "reminder_minutes" if "reminder_minutes" in old else "60"
+                expr_notes = "notes" if "notes" in old else "NULL"
+                expr_created = "created_at" if "created_at" in old else "CURRENT_TIMESTAMP"
+                expr_updated = "updated_at" if "updated_at" in old else "CURRENT_TIMESTAMP"
+                expr_created_by = "created_by" if "created_by" in old else "NULL"
+
+                copy_sql = f"""
+                    INSERT INTO calendar_events (
+                        title, description, event_type, start_datetime, end_datetime,
+                        all_day, recurring_rule_id, customer_id, vehicle_id, order_id,
+                        mechanic_id, priority, color, status, reminder_minutes, notes,
+                        created_at, updated_at, created_by
+                    )
+                    SELECT
+                        {expr_title}, {expr_desc}, {expr_type}, {expr_start}, {expr_end},
+                        {expr_all_day}, {expr_recurring}, {expr_customer}, {expr_vehicle}, {expr_order},
+                        {expr_mechanic}, {expr_priority}, {expr_color}, {expr_status}, {expr_reminder}, {expr_notes},
+                        {expr_created}, {expr_updated}, {expr_created_by}
+                    FROM calendar_events_old;
+                """
+                self.cursor.execute(copy_sql)
+                self.cursor.execute("DROP TABLE calendar_events_old;")
+                print("✅ Tabulka calendar_events migrována na novou strukturu")
+
+        # Indexy pro calendar_events
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_start ON calendar_events(start_datetime);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_end ON calendar_events(end_datetime);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_mechanic ON calendar_events(mechanic_id);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_customer ON calendar_events(customer_id);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_status ON calendar_events(status);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_events_type ON calendar_events(event_type);")
+
+        # Připomínky k událostem
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER NOT NULL,
+                reminder_type TEXT NOT NULL DEFAULT 'before_event',
+                remind_at TEXT NOT NULL,
+                sent INTEGER DEFAULT 0,
+                sent_at TEXT,
+                method TEXT DEFAULT 'app',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE
+            )
+        """)
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_reminders_event ON calendar_reminders(event_id);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_reminders_remind_at ON calendar_reminders(remind_at);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_reminders_sent ON calendar_reminders(sent);")
+
+        # Dostupnost mechaniků (pracovní doba)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_availability (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mechanic_id INTEGER,
+                day_of_week INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                is_working INTEGER DEFAULT 1,
+                note TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (mechanic_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_availability_mechanic ON calendar_availability(mechanic_id);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_availability_day ON calendar_availability(day_of_week);")
+
+        # Svátky a volné dny
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_holidays (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                holiday_date TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                is_closed INTEGER DEFAULT 1,
+                note TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_holidays_date ON calendar_holidays(holiday_date);")
+
+        # Rezervace/Objednávky v kalendáři (kompatibilita se staršími moduly)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_bookings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER,
+                customer_id INTEGER,
+                vehicle_id INTEGER,
+                mechanic_id INTEGER,
+                booking_date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                service_type TEXT,
+                status TEXT DEFAULT 'pending',
+                note TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE SET NULL,
+                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+                FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE SET NULL,
+                FOREIGN KEY (mechanic_id) REFERENCES users(id) ON DELETE SET NULL
+            )
+        """)
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_bookings_date ON calendar_bookings(booking_date);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_bookings_mechanic ON calendar_bookings(mechanic_id);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_bookings_status ON calendar_bookings(status);")
+
+        # ==========================================
+        # === 14) NASTAVENÍ KALENDÁŘE (OPRAVENO!) ===
+        # ==========================================
+        calendar_settings_sql = """
+            CREATE TABLE IF NOT EXISTS calendar_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                setting_key TEXT UNIQUE NOT NULL,
+                setting_value TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        
+        if not self._table_exists("calendar_settings"):
+            self.cursor.execute(calendar_settings_sql)
+        else:
+            # Migrace staré tabulky
+            old_cols = self._columns("calendar_settings")
+            if "setting_key" not in old_cols or "setting_value" not in old_cols:
+                # Stará struktura - přestavba
+                self.cursor.execute("ALTER TABLE calendar_settings RENAME TO calendar_settings_old;")
+                self.cursor.execute(calendar_settings_sql)
+                
+                # Zkus zkopírovat data pokud mají kompatibilní sloupce
+                old = self._columns("calendar_settings_old")
+                if "key" in old and "value" in old:
+                    self.cursor.execute("""
+                        INSERT INTO calendar_settings (setting_key, setting_value)
+                        SELECT key, value FROM calendar_settings_old;
+                    """)
+                
+                self.cursor.execute("DROP TABLE calendar_settings_old;")
+                print("✅ Tabulka calendar_settings migrována na novou strukturu")
+
+        # Výchozí hodnoty pro kalendář
+        self.cursor.execute("SELECT COUNT(*) AS c FROM calendar_settings;")
+        if self.cursor.fetchone()["c"] == 0:
+            calendar_settings = [
+                ('work_start_time', '08:00'),
+                ('work_end_time', '17:00'),
+                ('saturday_start_time', '08:00'),
+                ('saturday_end_time', '12:00'),
+                ('sunday_closed', '1'),
+                ('default_event_duration', '60'),
+                ('default_event_type', 'service'),
+                ('default_reminder_minutes', '60'),
+                ('first_day_of_week', '1'),
+                ('time_slot_interval', '30'),
+                ('show_weekends', '1'),
+                ('auto_reminders_enabled', '1'),
+                ('sms_reminders_enabled', '0'),
+                ('email_reminders_enabled', '1'),
+            ]
+            for key, value in calendar_settings:
+                self.cursor.execute("""
+                    INSERT OR IGNORE INTO calendar_settings (setting_key, setting_value)
+                    VALUES (?, ?)
+                """, (key, value))
+            print("✅ Výchozí nastavení kalendáře bylo vytvořeno")
+
+        # Výchozí pracovní doba (pro všechny mechaniky - NULL = platí pro všechny)
+        self.cursor.execute("SELECT COUNT(*) AS c FROM calendar_availability;")
+        if self.cursor.fetchone()["c"] == 0:
+            # Pondělí (1) až Pátek (5) - 8:00-17:00
+            for day in range(1, 6):
+                self.cursor.execute("""
+                    INSERT INTO calendar_availability (mechanic_id, day_of_week, start_time, end_time, is_working)
+                    VALUES (NULL, ?, '08:00', '17:00', 1)
+                """, (day,))
+            # Sobota (6) - 8:00-12:00
+            self.cursor.execute("""
+                INSERT INTO calendar_availability (mechanic_id, day_of_week, start_time, end_time, is_working)
+                VALUES (NULL, 6, '08:00', '12:00', 1)
+            """)
+            # Neděle (0) - zavřeno
+            self.cursor.execute("""
+                INSERT INTO calendar_availability (mechanic_id, day_of_week, start_time, end_time, is_working)
+                VALUES (NULL, 0, '00:00', '00:00', 0)
+            """)
+            print("✅ Výchozí pracovní doba byla nastavena")
+
+        # České státní svátky pro rok 2025
+        self.cursor.execute("SELECT COUNT(*) AS c FROM calendar_holidays;")
+        if self.cursor.fetchone()["c"] == 0:
+            holidays_2025 = [
+                ('2025-01-01', 'Nový rok'),
+                ('2025-04-18', 'Velký pátek'),
+                ('2025-04-21', 'Velikonoční pondělí'),
+                ('2025-05-01', 'Svátek práce'),
+                ('2025-05-08', 'Den vítězství'),
+                ('2025-07-05', 'Den slovanských věrozvěstů'),
+                ('2025-07-06', 'Den upálení mistra Jana Husa'),
+                ('2025-09-28', 'Den české státnosti'),
+                ('2025-10-28', 'Den vzniku samostatného československého státu'),
+                ('2025-11-17', 'Den boje za svobodu a demokracii'),
+                ('2025-12-24', 'Štědrý den'),
+                ('2025-12-25', '1. svátek vánoční'),
+                ('2025-12-26', '2. svátek vánoční'),
+            ]
+            for date, name in holidays_2025:
+                self.cursor.execute("""
+                    INSERT OR IGNORE INTO calendar_holidays (holiday_date, name, is_closed)
+                    VALUES (?, ?, 1)
+                """, (date, name))
+            print("✅ České státní svátky pro rok 2025 byly přidány")
+
+        # ==========================================
+        # === 15) PŮJČOVNA ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rental (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicle_id INTEGER NOT NULL,
+                customer_id INTEGER NOT NULL,
+                order_id INTEGER,
+                date_from DATE NOT NULL,
+                date_to DATE,
+                date_returned DATE,
+                status TEXT DEFAULT 'aktivní',
+                price_per_day REAL,
+                deposit REAL,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (vehicle_id) REFERENCES vehicles (id),
+                FOREIGN KEY (customer_id) REFERENCES customers (id),
+                FOREIGN KEY (order_id) REFERENCES orders (id)
+            )
+        """)
+
+        # ==========================================
+        # === 16) MODUL ADMINISTRATIVA ===
+        # ==========================================
+
+        # Faktury
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_number TEXT UNIQUE NOT NULL,
+                invoice_type TEXT NOT NULL,
+                customer_id INTEGER,
+                supplier_name TEXT,
+                issue_date TEXT NOT NULL,
+                due_date TEXT NOT NULL,
+                tax_date TEXT NOT NULL,
+                payment_method TEXT,
+                variable_symbol TEXT,
+                constant_symbol TEXT,
+                specific_symbol TEXT,
+                note TEXT,
+                status TEXT NOT NULL,
+                total_without_vat REAL DEFAULT 0,
+                total_vat REAL DEFAULT 0,
+                total_with_vat REAL DEFAULT 0,
+                paid_amount REAL DEFAULT 0,
+                order_id INTEGER,
+                created_by INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers(id),
+                FOREIGN KEY (order_id) REFERENCES orders(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_type ON invoices(invoice_type);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);")
+
+        # Položky faktur
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS invoice_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_id INTEGER NOT NULL,
+                item_name TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                unit TEXT,
+                price_per_unit REAL NOT NULL,
+                vat_rate INTEGER NOT NULL,
+                total_without_vat REAL NOT NULL,
+                total_vat REAL NOT NULL,
+                total_with_vat REAL NOT NULL,
+                warehouse_item_id INTEGER,
+                FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+                FOREIGN KEY (warehouse_item_id) REFERENCES warehouse(id)
+            )
+        """)
+
+        # Platby
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_id INTEGER NOT NULL,
+                payment_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                payment_method TEXT,
+                note TEXT,
+                created_by INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date);")
+
+        # Dokumenty
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_type TEXT NOT NULL,
+                document_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                category TEXT,
+                tags TEXT,
+                linked_entity_type TEXT,
+                linked_entity_id INTEGER,
+                file_size INTEGER,
+                upload_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                uploaded_by INTEGER,
+                note TEXT,
+                FOREIGN KEY (uploaded_by) REFERENCES users(id)
+            )
+        """)
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(document_type);")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_linked ON documents(linked_entity_type, linked_entity_id);")
+
+        # Nastavení administrativy
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                setting_key TEXT UNIQUE NOT NULL,
+                setting_value TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Sekvence čísel faktur
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS invoice_sequences (
+                year INTEGER PRIMARY KEY,
+                last_number INTEGER NOT NULL
+            )
+        """)
+        self.cursor.execute(
+            "INSERT INTO invoice_sequences(year, last_number) VALUES (?, 0) ON CONFLICT(year) DO NOTHING",
+            (datetime.now().year,),
+        )
+
+        # ==========================================
+        # === 17) ČÍSELNÍKY ===
+        # ==========================================
+
+        # Značky/Výrobci
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_brands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                country TEXT,
+                logo_path TEXT,
+                active INTEGER DEFAULT 1
+            )
+        """)
+        self._ensure_columns("codebook_brands", [
+            ("country", "TEXT"),
+            ("logo_path", "TEXT")
+        ])
+
+        # Typy vozidel
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_vehicle_types (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # Typy paliva
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_fuel_types (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # Barvy
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_colors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                hex_color TEXT,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # Typy oprav/služeb
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_repair_types (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE,
+                name TEXT UNIQUE NOT NULL,
+                category TEXT,
+                default_price REAL DEFAULT 0,
+                estimated_hours REAL,
+                description TEXT,
+                active INTEGER DEFAULT 1
+            )
+        """)
+        self._ensure_columns("codebook_repair_types", [
+            ("code", "TEXT"),
+            ("category", "TEXT"),
+            ("default_price", "REAL DEFAULT 0"),
+            ("estimated_hours", "REAL"),
+            ("description", "TEXT")
+        ])
+
+        # Pracovní pozice
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                default_hourly_rate REAL DEFAULT 0,
+                access_level INTEGER DEFAULT 1,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # Hodinové sazby
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_hourly_rates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                position_id INTEGER,
+                rate_without_vat REAL NOT NULL,
+                rate_with_vat REAL NOT NULL,
+                vat_rate REAL DEFAULT 21,
+                valid_from TEXT NOT NULL,
+                valid_to TEXT,
+                active INTEGER DEFAULT 1,
+                FOREIGN KEY (position_id) REFERENCES codebook_positions(id)
+            )
+        """)
+
+        # Zákaznické skupiny
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_customer_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                discount_work REAL DEFAULT 0,
+                discount_material REAL DEFAULT 0,
+                payment_terms INTEGER DEFAULT 14,
+                credit_limit REAL DEFAULT 0,
+                priority INTEGER DEFAULT 1,
+                color TEXT,
+                description TEXT,
+                active INTEGER DEFAULT 1
+            )
+        """)
+        # Přidej sloupec customer_group_id do customers pokud neexistuje
+        self._ensure_columns("customers", [
+            ("customer_group_id", "INTEGER REFERENCES codebook_customer_groups(id)")
+        ])
+
+        # Způsoby platby
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_payment_methods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                fee_percent REAL DEFAULT 0,
+                fee_fixed REAL DEFAULT 0,
+                is_default INTEGER DEFAULT 0,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # Sazby DPH
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_vat_rates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                rate REAL NOT NULL,
+                description TEXT,
+                valid_from TEXT,
+                valid_to TEXT,
+                is_default INTEGER DEFAULT 0,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # Stavy zakázek
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_order_statuses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                color TEXT,
+                icon TEXT,
+                sort_order INTEGER DEFAULT 0,
+                allowed_transitions TEXT,
+                notify_customer INTEGER DEFAULT 0,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # Měrné jednotky
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_units (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                symbol TEXT,
+                description TEXT,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # Měny
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS codebook_currencies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                symbol TEXT,
+                exchange_rate REAL DEFAULT 1,
+                is_default INTEGER DEFAULT 0,
+                active INTEGER DEFAULT 1
+            )
+        """)
+
+        # ==========================================
+        # === 18) NASTAVENÍ APLIKACE ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                description TEXT
+            )
+        """)
+
+        # ==========================================
+        # === 19) SEKVENCE ČÍSEL ZAKÁZEK ===
+        # ==========================================
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS order_sequences (
+                year INTEGER PRIMARY KEY,
+                last_number INTEGER NOT NULL
+            )
+        """)
+        self.cursor.execute(
+            "INSERT INTO order_sequences(year, last_number) VALUES (?, 0) ON CONFLICT(year) DO NOTHING",
+            (datetime.now().year,),
+        )
+
+        # ==========================================
+        # === 20) KOMPATIBILNÍ VIEW PRO STARŠÍ DOTAZY ===
+        # ==========================================
+        self.cursor.execute("DROP VIEW IF EXISTS orders_legacy;")
+        self.cursor.execute("""
+            CREATE VIEW IF NOT EXISTS orders_legacy AS
+            SELECT
+              id            AS order_id,
+              created_date  AS order_date,
+              completed_date,
+              customer_id,
+              vehicle_id,
+              status,
+              order_number,
+              total_price,
+              note,
+              created_at,
+              updated_at
+            FROM orders;
+        """)
+        
+        self.cursor.execute("DROP VIEW IF EXISTS warehouse_items;")
+        self.cursor.execute("""
+            CREATE VIEW IF NOT EXISTS warehouse_items AS
+            SELECT
+              id,
+              code           AS sku,
+              name,
+              quantity,
+              min_quantity   AS min_qty,
+              min_quantity   AS min_quantity,
+              price_sale     AS price,
+              price_purchase,
+              purchase_price,
+              category_id,
+              supplier_id,
+              ean,
+              location,
+              notes
+            FROM warehouse;
+        """)
+
+        self.connection.commit()
+        print("✅ Schéma databáze je připravené (vytvořeno/migrováno)")
+
+        # Extra: sanity kontrola po migraci
+        self._sanity_check()
+
+    # -----------------------
+    # Helpers
+    # -----------------------
+    def _create_order_work_log(self, users_pk: str, orders_pk: str):
+        """Vytvoří tabulku order_work_log navázanou na users(users_pk) a orders(orders_pk)."""
+        self.cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS order_work_log (
+                log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                hours_worked REAL NOT NULL,
+                description TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (order_id) REFERENCES orders({orders_pk}),
+                FOREIGN KEY (user_id) REFERENCES users({users_pk})
+            )
+        """)
+
+    def _ensure_order_work_log_schema(self):
+        """
+        Zajistí, že order_work_log odkazuje na users(PK) a orders(PK).
+        Pokud existuje stará/nekorektní verze, přestaví ji a přenese data.
+        """
+        users_pk = self._table_pk("users") or "id"
+        orders_pk = self._table_pk("orders") or "id"
+
+        if not self._table_exists("order_work_log"):
+            self._create_order_work_log(users_pk, orders_pk)
+            return
+
+        # existuje – ověříme strukturu
+        ok = True
+        try:
+            self.cursor.execute("PRAGMA foreign_key_check(order_work_log);")
+        except Exception:
+            ok = False
+
+        cols = self._columns("order_work_log")
+        if not {"order_id", "user_id", "date", "hours_worked"}.issubset(cols):
+            ok = False
+
+        if ok:
+            return
+
+        # Přestavba se zachováním dat (jen kompatibilní sloupce)
+        self.cursor.execute("ALTER TABLE order_work_log RENAME TO order_work_log_old;")
+        self._create_order_work_log(users_pk, orders_pk)
+
+        old_cols = self._columns("order_work_log_old")
+        can_copy = {"order_id", "user_id", "date", "hours_worked", "description", "created_at"}.issubset(old_cols)
+        if can_copy:
+            self.cursor.execute("""
+                INSERT INTO order_work_log(order_id, user_id, date, hours_worked, description, created_at)
+                SELECT order_id, user_id, date, hours_worked, description, created_at
+                FROM order_work_log_old;
+            """)
+        self.cursor.execute("DROP TABLE order_work_log_old;")
+
+    # -----------------------
+    # Sanity check schématu
+    # -----------------------
+    def _sanity_check(self):
+        """Základní kontrola důležitých tabulek/sloupců po migraci."""
+        checks = {
+            "customers": {"id", "first_name", "last_name"},
+            "vehicles": {"id", "customer_id", "brand", "model", "license_plate"},
+            "users": {"id", "username", "password", "full_name", "role", "active"},
+            "roles": {"id", "name", "description", "is_default"},
+            "permissions": {"id", "module_id", "action"},
+            "role_permissions": {"id", "role_id", "permission_id", "allowed"},
+            "user_permissions": {"id", "user_id", "permission_id", "allowed"},
+            "user_logins": {"id", "user_id", "login_time", "ip_address", "success", "note"},
+            "audit_log": {"id", "user_id", "username", "event_type", "details", "created_at"},
+            "orders": {"id", "order_number", "order_id", "customer_id", "created_date", "order_date"},
+            "warehouse_suppliers": {"id", "name", "ico", "dic", "contact_person", "phone", "email"},
+            "warehouse": {"id", "code", "name", "category_id", "supplier_id", "ean"},
+            "warehouse_movements": {"id", "item_id", "movement_date", "date", "qty_change", "quantity"},
+            "order_items": {"id", "order_id", "warehouse_id", "item_name", "name", "quantity", "unit", "unit_price", "vat_rate", "total_price"},
+            "calendar_events": {"id", "title", "event_type", "start_datetime", "end_datetime", "mechanic_id", "customer_id", "vehicle_id", "order_id", "status", "priority", "color", "reminder_minutes"},
+            "calendar_reminders": {"id", "event_id", "reminder_type", "remind_at", "sent", "method"},
+            "calendar_recurring_rules": {"id", "frequency", "interval_value", "days_of_week"},
+            "calendar_availability": {"id", "mechanic_id", "day_of_week", "start_time", "end_time", "is_working"},
+            "calendar_holidays": {"id", "holiday_date", "name", "is_closed"},
+            "calendar_settings": {"id", "setting_key", "setting_value"},
+            "invoices": {"id", "invoice_number", "invoice_type", "status", "due_date"},
+            "invoice_items": {"id", "invoice_id", "item_name", "quantity", "vat_rate"},
+            "payments": {"id", "invoice_id", "payment_date", "amount"},
+            "documents": {"id", "document_type", "document_name", "file_path"},
+            "admin_settings": {"id", "setting_key", "setting_value"},
+        }
+        
+        all_ok = True
+        for table, cols in checks.items():
+            if not self._table_exists(table):
+                print(f"⚠️ Chybí tabulka: {table}")
+                all_ok = False
+                continue
+            missing = cols - self._columns(table)
+            if missing:
+                print(f"⚠️ Tabulka {table} postrádá sloupce: {sorted(missing)}")
+                all_ok = False
+        
+        if all_ok:
+            print("✅ Sanity check OK - všechny tabulky a sloupce jsou v pořádku")
+
+    # -----------------------
+    # Seed základních dat
+    # -----------------------
+    def initialize_default_data(self):
+        """Naplnění databáze základními daty (idempotentně)."""
+
+        # Značky vozidel
+        self.cursor.execute("SELECT COUNT(*) AS c FROM codebook_brands;")
+        if self.cursor.fetchone()["c"] == 0:
+            brands = [
+                'Škoda', 'Volkswagen', 'Audi', 'BMW', 'Mercedes-Benz',
+                'Toyota', 'Honda', 'Ford', 'Opel', 'Renault', 'Peugeot',
+                'Citroën', 'Fiat', 'Hyundai', 'Kia', 'Mazda', 'Nissan',
+                'Volvo', 'Seat', 'Dacia', 'Suzuki', 'Mitsubishi'
+            ]
+            for name in brands:
+                self.cursor.execute("INSERT INTO codebook_brands (name) VALUES (?)", (name,))
+            print("✅ Základní značky vozidel byly naplněny")
+
+        # Nastavení aplikace
+        self.cursor.execute("SELECT COUNT(*) AS c FROM settings;")
+        if self.cursor.fetchone()["c"] == 0:
+            default_settings = [
+                ('company_name', 'Motoservis', 'Název firmy'),
+                ('company_address', '', 'Adresa firmy'),
+                ('company_phone', '', 'Telefon'),
+                ('company_email', '', 'Email'),
+                ('company_ico', '', 'IČO'),
+                ('company_dic', '', 'DIČ'),
+                ('invoice_prefix', 'FAK', 'Prefix čísla faktury'),
+                ('order_prefix', 'ZAK', 'Prefix čísla zakázky'),
+            ]
+            for k, v, d in default_settings:
+                self.cursor.execute(
+                    "INSERT INTO settings (key, value, description) VALUES (?, ?, ?)",
+                    (k, v, d)
+                )
+            print("✅ Základní nastavení bylo vytvořeno")
+
+        # Výchozí admin účet
+        self.cursor.execute("SELECT COUNT(*) AS c FROM users WHERE username='admin';")
+        if self.cursor.fetchone()["c"] == 0:
+            self.cursor.execute(
+                "INSERT INTO users (username, password, full_name, role) VALUES (?, ?, ?, ?)",
+                ('admin', 'admin', 'Administrátor', 'admin')
+            )
+            print("✅ Výchozí admin účet byl vytvořen (username: admin, heslo: admin)")
+
+        # Výchozí role
+        self.cursor.execute("SELECT COUNT(*) AS c FROM roles;")
+        if self.cursor.fetchone()["c"] == 0:
+            default_roles = [
+                ('admin', 'Plný přístup ke všem funkcím', 0),
+                ('vedouci', 'Vedoucí servisu - přístup k většině funkcí', 0),
+                ('mechanik', 'Mechanik - zakázky, vozidla, sklad', 1),
+                ('recepcni', 'Recepční - zákazníci, zakázky, kalendář', 0),
+                ('skladnik', 'Skladník - správa skladu', 0),
+                ('ucetni', 'Účetní - administrativa a reporty', 0),
+            ]
+            for name, desc, is_default in default_roles:
+                self.cursor.execute(
+                    "INSERT INTO roles (name, description, is_default) VALUES (?, ?, ?)",
+                    (name, desc, is_default)
+                )
+            print("✅ Výchozí role byly vytvořeny")
+
+        # Definice oprávnění pro všechny moduly
+        self.cursor.execute("SELECT COUNT(*) AS c FROM permissions;")
+        if self.cursor.fetchone()["c"] == 0:
+            modules = [
+                'dashboard', 'vehicles', 'customers', 'orders', 'warehouse',
+                'administration', 'codebooks', 'rental', 'calendar',
+                'settings', 'management', 'users'
+            ]
+            actions = ['view', 'create', 'edit', 'delete', 'export', 'admin']
+
+            for module in modules:
+                for action in actions:
+                    self.cursor.execute(
+                        "INSERT INTO permissions (module_id, action, description) VALUES (?, ?, ?)",
+                        (module, action, f"{action} pro {module}")
+                    )
+            print("✅ Definice oprávnění byly vytvořeny")
+
+        # Oprávnění pro role
+        self.cursor.execute("SELECT COUNT(*) AS c FROM role_permissions;")
+        if self.cursor.fetchone()["c"] == 0:
+            # Admin má vše
+            admin_role = self.fetch_one("SELECT id FROM roles WHERE name = 'admin'")
+            if admin_role:
+                permissions = self.fetch_all("SELECT id FROM permissions")
+                for perm in permissions:
+                    self.cursor.execute(
+                        "INSERT INTO role_permissions (role_id, permission_id, allowed) VALUES (?, ?, 1)",
+                        (admin_role['id'], perm['id'])
+                    )
+
+            # Mechanik má základní oprávnění
+            mechanik_role = self.fetch_one("SELECT id FROM roles WHERE name = 'mechanik'")
+            if mechanik_role:
+                mechanik_modules = ['dashboard', 'vehicles', 'customers', 'orders', 'warehouse', 'calendar']
+                for module in mechanik_modules:
+                    perms = self.fetch_all(
+                        "SELECT id FROM permissions WHERE module_id = ? AND action IN ('view', 'create', 'edit')",
+                        (module,)
+                    )
+                    for perm in perms:
+                        self.cursor.execute(
+                            "INSERT INTO role_permissions (role_id, permission_id, allowed) VALUES (?, ?, 1)",
+                            (mechanik_role['id'], perm['id'])
+                        )
+
+            print("✅ Oprávnění rolí byla nastavena")
+
+        # Aktualizuj admin účet - přiřaď roli 'admin'
+        self.cursor.execute("UPDATE users SET role = 'admin' WHERE username = 'admin' AND role IS NULL;")
+
+        # Výchozí nastavení administrativy
+        self.cursor.execute("SELECT COUNT(*) AS c FROM admin_settings;")
+        if self.cursor.fetchone()["c"] == 0:
+            admin_settings = [
+                ('company_name', 'Motoservis s.r.o.'),
+                ('company_ico', '12345678'),
+                ('company_dic', 'CZ12345678'),
+                ('company_address', 'Testovací 123, 123 45 Praha'),
+                ('company_phone', '+420 123 456 789'),
+                ('company_email', 'info@motoservis.cz'),
+                ('bank_account', '1234567890/0100'),
+                ('invoice_prefix_issued', 'FV'),
+                ('invoice_prefix_received', 'FP'),
+                ('invoice_year_reset', '1'),
+                ('invoice_next_number', '1'),
+                ('default_due_days', '14'),
+                ('default_payment_method', 'Bankovní převod'),
+                ('vat_payer', '1'),
+                ('vat_rate_standard', '21'),
+                ('vat_rate_reduced', '12'),
+                ('vat_rate_zero', '0'),
+            ]
+
+            for key, value in admin_settings:
+                self.cursor.execute("""
+                    INSERT OR IGNORE INTO admin_settings (setting_key, setting_value)
+                    VALUES (?, ?)
+                """, (key, value))
+            print("✅ Výchozí nastavení administrativy bylo vytvořeno")
+
+        self.connection.commit()
+        print("✅ Databáze inicializována")
+
+    # -----------------------
+    # Zálohy
+    # -----------------------
+    def backup_database(self) -> bool:
+        """Vytvoření zálohy databáze do config.BACKUP_DIR."""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_name = f"motoservis_backup_{timestamp}.db"
+            backup_dir: Path = Path(config.BACKUP_DIR)
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            backup_path = backup_dir / backup_name
+            shutil.copy2(self.db_path, backup_path)
+
+            max_backups = getattr(config, "MAX_BACKUPS", 10)
+            backups = sorted(backup_dir.glob("motoservis_backup_*.db"))
+            if len(backups) > max_backups:
+                for old in backups[:-max_backups]:
+                    try:
+                        old.unlink()
+                    except Exception:
+                        pass
+
+            print(f"✅ Záloha vytvořena: {backup_name}")
+            return True
+        except Exception as e:
+            print(f"❌ Chyba při vytváření zálohy: {e}")
+            return False
+
+    # -----------------------
+    # Bezpečné provádění SQL
+    # -----------------------
+    def execute_query(self, query: str, params: Optional[tuple] = None):
+        """Spuštění SQL dotazu a vrácení výsledků s logem chyb."""
+        try:
+            if params is not None:
+                self.cursor.execute(query, params)
+            else:
+                self.cursor.execute(query)
+            self.connection.commit()
+            if query.strip().upper().startswith("SELECT"):
+                return self.cursor.fetchall()
+            return True
+        except Exception as e:
+            print(f"Chyba při provádění dotazu: {e}")
+            print(f"Dotaz: {query}")
+            print(f"Parametry: {params}")
+            return [] if query.strip().upper().startswith("SELECT") else False
+
+    def fetch_all(self, query: str, params: Optional[tuple] = None):
+        try:
+            if params is not None:
+                self.cursor.execute(query, params)
+            else:
+                self.cursor.execute(query)
+            rows = self.cursor.fetchall()
+            return rows or []
+        except Exception as e:
+            print(f"Chyba při načítání dat: {e}")
+            return []
+
+    def fetch_one(self, query: str, params: Optional[tuple] = None):
+        try:
+            if params is not None:
+                self.cursor.execute(query, params)
+            else:
+                self.cursor.execute(query)
+            return self.cursor.fetchone()
+        except Exception as e:
+            print(f"Chyba při načítání dat: {e}")
+            return None
+
+    # -----------------------
+    # Generátory čísel
+    # -----------------------
+    def get_next_order_number(self, year: int | None = None) -> str:
+        """
+        Vrátí další číslo zakázky ve formátu YYYYNNNN (např. 20250004).
+        Funguje bezpečně i pokud už běží transakce.
+        """
+        y = year or datetime.now().year
+
+        self.cursor.execute(
+            "INSERT INTO order_sequences(year, last_number) VALUES (?, 0) ON CONFLICT(year) DO NOTHING",
+            (y,),
+        )
+
+        started_tx = False
+        try:
+            if not self.connection.in_transaction:
+                self.cursor.execute("BEGIN IMMEDIATE;")
+                started_tx = True
+
+            self.cursor.execute("UPDATE order_sequences SET last_number = last_number + 1 WHERE year = ?", (y,))
+            self.cursor.execute("SELECT last_number FROM order_sequences WHERE year = ?", (y,))
+            n = self.cursor.fetchone()["last_number"]
+
+            if started_tx:
+                self.connection.commit()
+
+            return f"{y}{n:04d}"
+
+        except Exception:
+            if started_tx:
+                self.connection.rollback()
+            raise
+
+    def get_next_invoice_number(self, invoice_type: str = "issued", year: int | None = None) -> str:
+        """
+        Vrátí další číslo faktury ve formátu PREFIX-YYYY-NNNN (např. FV-2025-0001).
+        invoice_type: 'issued' (vydané) nebo 'received' (přijaté)
+        """
+        y = year or datetime.now().year
+
+        # Získej prefix z nastavení
+        prefix_key = f"invoice_prefix_{invoice_type}"
+        query = "SELECT setting_value FROM admin_settings WHERE setting_key = ?"
+        result = self.fetch_one(query, (prefix_key,))
+        prefix = result[0] if result else ("FV" if invoice_type == "issued" else "FP")
+
+        # Inicializuj sekvenci pro daný rok
+        self.cursor.execute(
+            "INSERT INTO invoice_sequences(year, last_number) VALUES (?, 0) ON CONFLICT(year) DO NOTHING",
+            (y,),
+        )
+
+        started_tx = False
+        try:
+            if not self.connection.in_transaction:
+                self.cursor.execute("BEGIN IMMEDIATE;")
+                started_tx = True
+
+            self.cursor.execute("UPDATE invoice_sequences SET last_number = last_number + 1 WHERE year = ?", (y,))
+            self.cursor.execute("SELECT last_number FROM invoice_sequences WHERE year = ?", (y,))
+            n = self.cursor.fetchone()["last_number"]
+
+            if started_tx:
+                self.connection.commit()
+
+            return f"{prefix}-{y}-{n:04d}"
+
+        except Exception:
+            if started_tx:
+                self.connection.rollback()
+            raise
+
+
+# Globální instance
+db = DatabaseManager()

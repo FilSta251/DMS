@@ -1,0 +1,891 @@
+# -*- coding: utf-8 -*-
+"""
+Modul Číselníky - Typy oprav (PRODUKČNÍ VERZE)
+"""
+
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                             QLabel, QTableWidget, QTableWidgetItem, QFrame,
+                             QComboBox, QLineEdit, QHeaderView, QMessageBox,
+                             QDialog, QFormLayout, QCheckBox, QFileDialog,
+                             QDoubleSpinBox, QTextEdit, QGroupBox)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QColor
+from datetime import datetime
+import csv
+import config
+from database_manager import db
+
+
+class RepairTypesWidget(QWidget):
+    """Widget pro správu typů oprav"""
+
+    data_changed = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.load_data()
+
+    def init_ui(self):
+        """Inicializace UI"""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Horní panel s akcemi
+        top_panel = self.create_top_panel()
+        layout.addWidget(top_panel)
+
+        # Filtr
+        filter_panel = self.create_filter_panel()
+        layout.addWidget(filter_panel)
+
+        # Tabulka
+        self.table = QTableWidget()
+        self.table.setColumnCount(8)
+        self.table.setHorizontalHeaderLabels([
+            "ID", "Kód", "Název", "Kategorie", "Cena (Kč)", "Čas (h)", "Aktivní", "Akce"
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(0, 50)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 80)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(4, 100)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(5, 80)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(6, 70)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(7, 150)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setVisible(False)
+        layout.addWidget(self.table)
+
+        # Spodní panel
+        bottom_panel = self.create_bottom_panel()
+        layout.addWidget(bottom_panel)
+
+    def create_top_panel(self):
+        """Vytvoření horního panelu"""
+        frame = QFrame()
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Tlačítka
+        add_btn = QPushButton("➕ Přidat typ opravy")
+        add_btn.clicked.connect(self.add_repair_type)
+        add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {config.COLOR_SUCCESS};
+                color: white;
+                padding: 10px 20px;
+                font-weight: bold;
+                border-radius: 4px;
+            }}
+        """)
+        layout.addWidget(add_btn)
+
+        import_btn = QPushButton("📥 Import CSV")
+        import_btn.clicked.connect(self.import_csv)
+        layout.addWidget(import_btn)
+
+        export_btn = QPushButton("📤 Export CSV")
+        export_btn.clicked.connect(self.export_csv)
+        layout.addWidget(export_btn)
+
+        reset_btn = QPushButton("🔄 Obnovit výchozí")
+        reset_btn.clicked.connect(self.reset_to_default)
+        layout.addWidget(reset_btn)
+
+        layout.addStretch()
+
+        # Vyhledávání
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("🔍 Vyhledat typ opravy...")
+        self.search_input.setFixedWidth(250)
+        self.search_input.textChanged.connect(self.filter_data)
+        layout.addWidget(self.search_input)
+
+        return frame
+
+    def create_filter_panel(self):
+        """Vytvoření panelu filtrů"""
+        frame = QFrame()
+        frame.setStyleSheet("""
+            QFrame {
+                background-color: #ecf0f1;
+                border-radius: 4px;
+                padding: 10px;
+            }
+        """)
+        layout = QHBoxLayout(frame)
+
+        # Filtr kategorie
+        layout.addWidget(QLabel("Kategorie:"))
+        self.category_filter = QComboBox()
+        self.category_filter.addItem("Všechny kategorie", "all")
+        self.category_filter.addItem("🔧 Servis", "servis")
+        self.category_filter.addItem("🛠️ Oprava", "oprava")
+        self.category_filter.addItem("🔍 Diagnostika", "diagnostika")
+        self.category_filter.addItem("⚙️ Montáž", "montaz")
+        self.category_filter.addItem("🎨 Lakování", "lakovani")
+        self.category_filter.addItem("📋 Ostatní", "ostatni")
+        self.category_filter.currentIndexChanged.connect(self.filter_data)
+        layout.addWidget(self.category_filter)
+
+        # Filtr aktivní
+        layout.addWidget(QLabel("Stav:"))
+        self.active_filter = QComboBox()
+        self.active_filter.addItem("Všechny", "all")
+        self.active_filter.addItem("✅ Aktivní", "active")
+        self.active_filter.addItem("❌ Neaktivní", "inactive")
+        self.active_filter.currentIndexChanged.connect(self.filter_data)
+        layout.addWidget(self.active_filter)
+
+        layout.addStretch()
+
+        # Řazení
+        layout.addWidget(QLabel("Řadit:"))
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItem("Podle kódu", "code")
+        self.sort_combo.addItem("Podle názvu", "name")
+        self.sort_combo.addItem("Podle kategorie", "category")
+        self.sort_combo.addItem("Podle ceny", "price")
+        self.sort_combo.addItem("Podle času", "time")
+        self.sort_combo.currentIndexChanged.connect(self.load_data)
+        layout.addWidget(self.sort_combo)
+
+        return frame
+
+    def create_bottom_panel(self):
+        """Vytvoření spodního panelu"""
+        frame = QFrame()
+        layout = QHBoxLayout(frame)
+
+        self.count_label = QLabel("Celkem: 0 typů oprav")
+        self.count_label.setStyleSheet("color: #7f8c8d; font-size: 11pt;")
+        layout.addWidget(self.count_label)
+
+        layout.addStretch()
+
+        self.last_update_label = QLabel("")
+        self.last_update_label.setStyleSheet("color: #95a5a6; font-size: 10pt;")
+        layout.addWidget(self.last_update_label)
+
+        return frame
+
+    # =====================================================
+    # CRUD OPERACE
+    # =====================================================
+
+    def load_data(self):
+        """Načtení dat z databáze"""
+        try:
+            # Sestavení dotazu s řazením
+            sort_option = self.sort_combo.currentData() if hasattr(self, 'sort_combo') else "code"
+
+            order_by = "code ASC"
+            if sort_option == "name":
+                order_by = "name ASC"
+            elif sort_option == "category":
+                order_by = "category, name ASC"
+            elif sort_option == "price":
+                order_by = "default_price DESC"
+            elif sort_option == "time":
+                order_by = "default_time DESC"
+
+            query = f"""
+                SELECT id, code, name, category, default_price, default_time, description, active
+                FROM codebook_repair_types
+                ORDER BY {order_by}
+            """
+            repair_types = db.fetch_all(query)
+
+            self.all_data = repair_types
+            self.filter_data()
+
+            self.last_update_label.setText(f"Poslední aktualizace: {datetime.now().strftime('%H:%M:%S')}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se načíst data:\n{e}")
+
+    def filter_data(self):
+        """Filtrování dat podle kritérií"""
+        if not hasattr(self, 'all_data'):
+            return
+
+        filtered = self.all_data
+
+        # Filtr podle textu
+        search_text = self.search_input.text().lower().strip()
+        if search_text:
+            filtered = [r for r in filtered if
+                       search_text in r["name"].lower() or
+                       search_text in r["code"].lower()]
+
+        # Filtr podle kategorie
+        category_filter = self.category_filter.currentData()
+        if category_filter != "all":
+            filtered = [r for r in filtered if r["category"] == category_filter]
+
+        # Filtr podle stavu
+        active_filter = self.active_filter.currentData()
+        if active_filter == "active":
+            filtered = [r for r in filtered if r["active"] == 1]
+        elif active_filter == "inactive":
+            filtered = [r for r in filtered if r["active"] == 0]
+
+        self.display_data(filtered)
+
+    def display_data(self, data):
+        """Zobrazení dat v tabulce"""
+        self.table.setRowCount(len(data))
+
+        category_labels = {
+            "servis": "🔧 Servis",
+            "oprava": "🛠️ Oprava",
+            "diagnostika": "🔍 Diagnostika",
+            "montaz": "⚙️ Montáž",
+            "lakovani": "🎨 Lakování",
+            "ostatni": "📋 Ostatní"
+        }
+
+        for row, repair_type in enumerate(data):
+            # ID
+            id_item = QTableWidgetItem(str(repair_type["id"]))
+            id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            id_item.setFlags(id_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 0, id_item)
+
+            # Kód
+            code_item = QTableWidgetItem(repair_type["code"])
+            code_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            code_item.setFlags(code_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            code_font = QFont()
+            code_font.setBold(True)
+            code_item.setFont(code_font)
+            self.table.setItem(row, 1, code_item)
+
+            # Název
+            name_item = QTableWidgetItem(repair_type["name"])
+            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 2, name_item)
+
+            # Kategorie
+            category_text = category_labels.get(repair_type["category"], repair_type["category"])
+            category_item = QTableWidgetItem(category_text)
+            category_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 3, category_item)
+
+            # Cena
+            price_item = QTableWidgetItem(f"{repair_type['default_price']:,.0f}".replace(",", " "))
+            price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            price_item.setFlags(price_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 4, price_item)
+
+            # Čas
+            time_item = QTableWidgetItem(f"{repair_type['default_time']:.1f}")
+            time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            time_item.setFlags(time_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 5, time_item)
+
+            # Aktivní
+            active_item = QTableWidgetItem("✅" if repair_type["active"] else "❌")
+            active_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            active_item.setFlags(active_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if not repair_type["active"]:
+                active_item.setForeground(QColor("#e74c3c"))
+            self.table.setItem(row, 6, active_item)
+
+            # Akce
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout(actions_widget)
+            actions_layout.setContentsMargins(5, 2, 5, 2)
+            actions_layout.setSpacing(5)
+
+            edit_btn = QPushButton("✏️")
+            edit_btn.setToolTip("Upravit")
+            edit_btn.setFixedSize(30, 30)
+            edit_btn.clicked.connect(lambda checked, r=repair_type: self.edit_repair_type(r))
+            actions_layout.addWidget(edit_btn)
+
+            duplicate_btn = QPushButton("📋")
+            duplicate_btn.setToolTip("Duplikovat")
+            duplicate_btn.setFixedSize(30, 30)
+            duplicate_btn.clicked.connect(lambda checked, r=repair_type: self.duplicate_repair_type(r))
+            actions_layout.addWidget(duplicate_btn)
+
+            toggle_btn = QPushButton("🔄")
+            toggle_btn.setToolTip("Aktivovat/Deaktivovat")
+            toggle_btn.setFixedSize(30, 30)
+            toggle_btn.clicked.connect(lambda checked, r=repair_type: self.toggle_active(r))
+            actions_layout.addWidget(toggle_btn)
+
+            delete_btn = QPushButton("🗑️")
+            delete_btn.setToolTip("Smazat")
+            delete_btn.setFixedSize(30, 30)
+            delete_btn.clicked.connect(lambda checked, r=repair_type: self.delete_repair_type(r))
+            actions_layout.addWidget(delete_btn)
+
+            self.table.setCellWidget(row, 7, actions_widget)
+
+        self.count_label.setText(f"Celkem: {len(data)} typů oprav")
+
+    def add_repair_type(self):
+        """Přidání nového typu opravy"""
+        dialog = RepairTypeDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.get_data()
+            try:
+                query = """
+                    INSERT INTO codebook_repair_types
+                    (code, name, category, default_price, default_time, description, active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """
+                db.execute_query(query, (
+                    data["code"],
+                    data["name"],
+                    data["category"],
+                    data["default_price"],
+                    data["default_time"],
+                    data["description"],
+                    data["active"]
+                ))
+
+                QMessageBox.information(self, "Úspěch", f"Typ opravy '{data['name']}' byl přidán.")
+                self.load_data()
+                self.data_changed.emit()
+
+            except Exception as e:
+                if "UNIQUE constraint failed" in str(e):
+                    QMessageBox.warning(self, "Chyba", f"Kód '{data['code']}' již existuje.")
+                else:
+                    QMessageBox.critical(self, "Chyba", f"Nepodařilo se přidat typ opravy:\n{e}")
+
+    def edit_repair_type(self, repair_type):
+        """Úprava typu opravy"""
+        dialog = RepairTypeDialog(self, repair_type)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.get_data()
+            try:
+                query = """
+                    UPDATE codebook_repair_types
+                    SET code = ?, name = ?, category = ?, default_price = ?,
+                        default_time = ?, description = ?, active = ?
+                    WHERE id = ?
+                """
+                db.execute_query(query, (
+                    data["code"],
+                    data["name"],
+                    data["category"],
+                    data["default_price"],
+                    data["default_time"],
+                    data["description"],
+                    data["active"],
+                    repair_type["id"]
+                ))
+
+                QMessageBox.information(self, "Úspěch", "Typ opravy byl upraven.")
+                self.load_data()
+                self.data_changed.emit()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Chyba", f"Nepodařilo se upravit typ opravy:\n{e}")
+
+    def duplicate_repair_type(self, repair_type):
+        """Duplikování typu opravy"""
+        try:
+            # Generovat nový kód
+            base_code = repair_type["code"]
+            counter = 1
+            new_code = f"{base_code}_{counter}"
+
+            while True:
+                check_query = "SELECT id FROM codebook_repair_types WHERE code = ?"
+                existing = db.fetch_one(check_query, (new_code,))
+                if not existing:
+                    break
+                counter += 1
+                new_code = f"{base_code}_{counter}"
+
+            query = """
+                INSERT INTO codebook_repair_types
+                (code, name, category, default_price, default_time, description, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """
+            db.execute_query(query, (
+                new_code,
+                f"{repair_type['name']} (kopie)",
+                repair_type["category"],
+                repair_type["default_price"],
+                repair_type["default_time"],
+                repair_type["description"],
+                1
+            ))
+
+            QMessageBox.information(self, "Úspěch", f"Typ opravy byl zduplikován s kódem '{new_code}'.")
+            self.load_data()
+            self.data_changed.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se duplikovat typ opravy:\n{e}")
+
+    def delete_repair_type(self, repair_type):
+        """Smazání typu opravy"""
+        reply = QMessageBox.question(
+            self,
+            "Smazat typ opravy",
+            f"Opravdu chcete smazat typ opravy '{repair_type['name']}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                query = "DELETE FROM codebook_repair_types WHERE id = ?"
+                db.execute_query(query, (repair_type["id"],))
+
+                QMessageBox.information(self, "Úspěch", "Typ opravy byl smazán.")
+                self.load_data()
+                self.data_changed.emit()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Chyba", f"Nepodařilo se smazat typ opravy:\n{e}")
+
+    def toggle_active(self, repair_type):
+        """Přepnutí aktivního stavu"""
+        try:
+            new_state = 0 if repair_type["active"] else 1
+            query = "UPDATE codebook_repair_types SET active = ? WHERE id = ?"
+            db.execute_query(query, (new_state, repair_type["id"]))
+
+            self.load_data()
+            self.data_changed.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se změnit stav:\n{e}")
+
+    # =====================================================
+    # IMPORT / EXPORT
+    # =====================================================
+
+    def import_csv(self):
+        """Import typů oprav z CSV"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Importovat typy oprav z CSV",
+            "",
+            "CSV soubory (*.csv)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            imported = 0
+            skipped = 0
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f, delimiter=';')
+
+                for row in reader:
+                    code = row.get("code", "").strip()
+                    name = row.get("name", "").strip()
+                    if not code or not name:
+                        continue
+
+                    category = row.get("category", "ostatni").strip()
+                    default_price = float(row.get("default_price", 0))
+                    default_time = float(row.get("default_time", 0))
+                    description = row.get("description", "").strip()
+                    active = int(row.get("active", 1))
+
+                    # Kontrola existence
+                    check_query = "SELECT id FROM codebook_repair_types WHERE code = ?"
+                    existing = db.fetch_one(check_query, (code,))
+
+                    if existing:
+                        skipped += 1
+                        continue
+
+                    query = """
+                        INSERT INTO codebook_repair_types
+                        (code, name, category, default_price, default_time, description, active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                    db.execute_query(query, (code, name, category, default_price, default_time, description, active))
+                    imported += 1
+
+            QMessageBox.information(
+                self,
+                "Import dokončen",
+                f"Importováno: {imported} typů oprav\nPřeskočeno (duplicity): {skipped}"
+            )
+
+            self.load_data()
+            self.data_changed.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se importovat CSV:\n{e}")
+
+    def export_csv(self):
+        """Export typů oprav do CSV"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportovat typy oprav do CSV",
+            f"typy_oprav_{datetime.now().strftime('%Y%m%d')}.csv",
+            "CSV soubory (*.csv)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            query = """
+                SELECT code, name, category, default_price, default_time, description, active
+                FROM codebook_repair_types
+                ORDER BY code
+            """
+            repair_types = db.fetch_all(query)
+
+            with open(file_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=["code", "name", "category", "default_price", "default_time", "description", "active"],
+                    delimiter=';'
+                )
+                writer.writeheader()
+
+                for rt in repair_types:
+                    writer.writerow({
+                        "code": rt["code"],
+                        "name": rt["name"],
+                        "category": rt["category"],
+                        "default_price": rt["default_price"],
+                        "default_time": rt["default_time"],
+                        "description": rt["description"] or "",
+                        "active": rt["active"]
+                    })
+
+            QMessageBox.information(
+                self,
+                "Export dokončen",
+                f"Exportováno {len(repair_types)} typů oprav do:\n{file_path}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se exportovat CSV:\n{e}")
+
+    def reset_to_default(self):
+        """Obnovení výchozích typů oprav"""
+        reply = QMessageBox.question(
+            self,
+            "Obnovit výchozí typy oprav",
+            "Opravdu chcete obnovit výchozí typy oprav?\n\n"
+            "Budou přidány chybějící typy, existující zůstanou.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            default_types = [
+                # Servis
+                ("SRV01", "Výměna oleje a filtru", "servis", 800, 1.0),
+                ("SRV02", "Výměna vzduchového filtru", "servis", 400, 0.5),
+                ("SRV03", "Výměna kabinového filtru", "servis", 500, 0.5),
+                ("SRV04", "Výměna palivového filtru", "servis", 600, 0.75),
+                ("SRV05", "Výměna brzdové kapaliny", "servis", 700, 1.0),
+                ("SRV06", "Výměna chladicí kapaliny", "servis", 900, 1.5),
+                ("SRV07", "Kontrola a doplnění kapalin", "servis", 300, 0.5),
+
+                # Opravy
+                ("OPR01", "Výměna brzdových destiček - přední", "oprava", 1500, 2.0),
+                ("OPR02", "Výměna brzdových destiček - zadní", "oprava", 1200, 1.5),
+                ("OPR03", "Výměna brzdových kotoučů", "oprava", 2500, 3.0),
+                ("OPR04", "Výměna rozvodového řemene", "oprava", 5000, 6.0),
+                ("OPR05", "Výměna rozvodového řetězu", "oprava", 8000, 8.0),
+                ("OPR06", "Výměna spojky", "oprava", 6000, 7.0),
+                ("OPR07", "Výměna tlumičů - přední", "oprava", 4000, 4.0),
+                ("OPR08", "Výměna tlumičů - zadní", "oprava", 3500, 3.5),
+                ("OPR09", "Výměna akumulátoru", "oprava", 500, 0.5),
+                ("OPR10", "Výměna zapalovacích svíček", "oprava", 800, 1.0),
+
+                # Diagnostika
+                ("DIA01", "Diagnostika závady", "diagnostika", 600, 0.5),
+                ("DIA02", "Kompletní diagnostika vozidla", "diagnostika", 1500, 2.0),
+                ("DIA03", "Diagnostika motoru", "diagnostika", 1000, 1.0),
+                ("DIA04", "Diagnostika brzd", "diagnostika", 800, 0.75),
+                ("DIA05", "Diagnostika podvozku", "diagnostika", 1000, 1.0),
+
+                # Montáž
+                ("MON01", "Přezutí pneumatik (4 ks)", "montaz", 600, 1.0),
+                ("MON02", "Vyvážení kol (4 ks)", "montaz", 400, 0.5),
+                ("MON03", "Geometrie kol", "montaz", 1200, 1.5),
+                ("MON04", "Montáž tažného zařízení", "montaz", 3000, 4.0),
+                ("MON05", "Montáž střešního nosiče", "montaz", 800, 1.0),
+
+                # Ostatní
+                ("OST01", "Příprava na STK", "ostatni", 1500, 2.0),
+                ("OST02", "Příprava na měření emisí", "ostatni", 800, 1.0),
+                ("OST03", "Mytí motoru", "ostatni", 500, 0.5),
+                ("OST04", "Čištění klimatizace", "ostatni", 800, 1.0),
+                ("OST05", "Plnění klimatizace", "ostatni", 1200, 1.5),
+            ]
+
+            added = 0
+            for code, name, category, price, time in default_types:
+                check_query = "SELECT id FROM codebook_repair_types WHERE code = ?"
+                existing = db.fetch_one(check_query, (code,))
+
+                if not existing:
+                    query = """
+                        INSERT INTO codebook_repair_types
+                        (code, name, category, default_price, default_time, description, active)
+                        VALUES (?, ?, ?, ?, ?, '', 1)
+                    """
+                    db.execute_query(query, (code, name, category, price, time))
+                    added += 1
+
+            QMessageBox.information(
+                self,
+                "Dokončeno",
+                f"Přidáno {added} výchozích typů oprav."
+            )
+
+            self.load_data()
+            self.data_changed.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se obnovit výchozí typy oprav:\n{e}")
+
+    # =====================================================
+    # POMOCNÉ METODY
+    # =====================================================
+
+    def get_count(self):
+        """Vrátí počet položek"""
+        try:
+            query = "SELECT COUNT(*) as count FROM codebook_repair_types"
+            result = db.fetch_one(query)
+            return result["count"] if result else 0
+        except:
+            return 0
+
+    def export_data(self):
+        """Export dat pro zálohu"""
+        try:
+            query = """
+                SELECT code, name, category, default_price, default_time, description, active
+                FROM codebook_repair_types
+            """
+            return db.fetch_all(query)
+        except:
+            return []
+
+    def import_data(self, data):
+        """Import dat ze zálohy"""
+        try:
+            for item in data:
+                check_query = "SELECT id FROM codebook_repair_types WHERE code = ?"
+                existing = db.fetch_one(check_query, (item["code"],))
+
+                if existing:
+                    query = """
+                        UPDATE codebook_repair_types
+                        SET name = ?, category = ?, default_price = ?, default_time = ?,
+                            description = ?, active = ?
+                        WHERE code = ?
+                    """
+                    db.execute_query(query, (
+                        item["name"],
+                        item["category"],
+                        item["default_price"],
+                        item["default_time"],
+                        item.get("description", ""),
+                        item["active"],
+                        item["code"]
+                    ))
+                else:
+                    query = """
+                        INSERT INTO codebook_repair_types
+                        (code, name, category, default_price, default_time, description, active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                    db.execute_query(query, (
+                        item["code"],
+                        item["name"],
+                        item["category"],
+                        item["default_price"],
+                        item["default_time"],
+                        item.get("description", ""),
+                        item["active"]
+                    ))
+
+            self.load_data()
+
+        except Exception as e:
+            print(f"Chyba při importu dat: {e}")
+
+    def refresh(self):
+        """Obnovení dat"""
+        self.load_data()
+
+
+# =====================================================
+# DIALOG PRO TYP OPRAVY
+# =====================================================
+
+class RepairTypeDialog(QDialog):
+    """Dialog pro přidání/úpravu typu opravy"""
+
+    def __init__(self, parent, repair_type=None):
+        super().__init__(parent)
+        self.repair_type = repair_type
+        self.setWindowTitle("Upravit typ opravy" if repair_type else "Nový typ opravy")
+        self.setMinimumWidth(500)
+        self.init_ui()
+
+        if repair_type:
+            self.load_repair_type_data()
+
+    def init_ui(self):
+        """Inicializace UI"""
+        layout = QFormLayout(self)
+
+        # Kód
+        self.code_input = QLineEdit()
+        self.code_input.setPlaceholderText("Např: SRV01, OPR02...")
+        self.code_input.setMaxLength(10)
+        layout.addRow("Kód:", self.code_input)
+
+        # Název
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Např: Výměna oleje a filtru")
+        layout.addRow("Název:", self.name_input)
+
+        # Kategorie
+        self.category_combo = QComboBox()
+        self.category_combo.addItem("🔧 Servis", "servis")
+        self.category_combo.addItem("🛠️ Oprava", "oprava")
+        self.category_combo.addItem("🔍 Diagnostika", "diagnostika")
+        self.category_combo.addItem("⚙️ Montáž", "montaz")
+        self.category_combo.addItem("🎨 Lakování", "lakovani")
+        self.category_combo.addItem("📋 Ostatní", "ostatni")
+        layout.addRow("Kategorie:", self.category_combo)
+
+        # Cena a čas
+        price_time_group = QGroupBox("Výchozí hodnoty")
+        price_time_layout = QFormLayout(price_time_group)
+
+        self.price_input = QDoubleSpinBox()
+        self.price_input.setRange(0, 999999)
+        self.price_input.setDecimals(0)
+        self.price_input.setSuffix(" Kč")
+        self.price_input.setValue(0)
+        price_time_layout.addRow("Cena:", self.price_input)
+
+        self.time_input = QDoubleSpinBox()
+        self.time_input.setRange(0, 100)
+        self.time_input.setDecimals(2)
+        self.time_input.setSuffix(" hodin")
+        self.time_input.setSingleStep(0.25)
+        self.time_input.setValue(0)
+        price_time_layout.addRow("Čas:", self.time_input)
+
+        # Kalkulátor
+        calc_layout = QHBoxLayout()
+        calc_label = QLabel("Rychlý výpočet:")
+        calc_layout.addWidget(calc_label)
+
+        self.hourly_rate = QDoubleSpinBox()
+        self.hourly_rate.setRange(0, 10000)
+        self.hourly_rate.setValue(800)
+        self.hourly_rate.setSuffix(" Kč/h")
+        calc_layout.addWidget(self.hourly_rate)
+
+        calc_btn = QPushButton("Vypočítat")
+        calc_btn.clicked.connect(self.calculate_price)
+        calc_layout.addWidget(calc_btn)
+
+        price_time_layout.addRow("", calc_layout)
+
+        layout.addRow(price_time_group)
+
+        # Popis
+        self.description_input = QTextEdit()
+        self.description_input.setMaximumHeight(100)
+        self.description_input.setPlaceholderText("Detailní popis práce...")
+        layout.addRow("Popis:", self.description_input)
+
+        # Aktivní
+        self.active_checkbox = QCheckBox("Aktivní (dostupný pro výběr)")
+        self.active_checkbox.setChecked(True)
+        layout.addRow("", self.active_checkbox)
+
+        # Tlačítka
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+
+        cancel_btn = QPushButton("Zrušit")
+        cancel_btn.clicked.connect(self.reject)
+        buttons_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("💾 Uložit")
+        save_btn.clicked.connect(self.save)
+        save_btn.setStyleSheet(f"background-color: {config.COLOR_SUCCESS}; color: white; padding: 8px 20px;")
+        buttons_layout.addWidget(save_btn)
+
+        layout.addRow(buttons_layout)
+
+    def load_repair_type_data(self):
+        """Načtení dat typu opravy"""
+        self.code_input.setText(self.repair_type["code"])
+        self.name_input.setText(self.repair_type["name"])
+
+        index = self.category_combo.findData(self.repair_type["category"])
+        if index >= 0:
+            self.category_combo.setCurrentIndex(index)
+
+        self.price_input.setValue(self.repair_type["default_price"])
+        self.time_input.setValue(self.repair_type["default_time"])
+        self.description_input.setPlainText(self.repair_type["description"] or "")
+        self.active_checkbox.setChecked(self.repair_type["active"] == 1)
+
+    def calculate_price(self):
+        """Výpočet ceny podle hodinové sazby"""
+        time = self.time_input.value()
+        rate = self.hourly_rate.value()
+        price = time * rate
+        self.price_input.setValue(price)
+
+    def save(self):
+        """Uložení typu opravy"""
+        code = self.code_input.text().strip()
+        name = self.name_input.text().strip()
+
+        if not code:
+            QMessageBox.warning(self, "Chyba", "Vyplňte kód typu opravy.")
+            return
+
+        if not name:
+            QMessageBox.warning(self, "Chyba", "Vyplňte název typu opravy.")
+            return
+
+        self.accept()
+
+    def get_data(self):
+        """Vrácení dat"""
+        return {
+            "code": self.code_input.text().strip().upper(),
+            "name": self.name_input.text().strip(),
+            "category": self.category_combo.currentData(),
+            "default_price": self.price_input.value(),
+            "default_time": self.time_input.value(),
+            "description": self.description_input.toPlainText().strip(),
+            "active": 1 if self.active_checkbox.isChecked() else 0
+        }

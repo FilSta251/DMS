@@ -1,0 +1,746 @@
+# -*- coding: utf-8 -*-
+"""
+Pomocné widgety pro zakázky - dialogy a komponenty
+"""
+
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
+    QPushButton, QLabel, QComboBox, QMessageBox,
+    QLineEdit, QDoubleSpinBox, QSpinBox, QTextEdit,
+    QDateEdit, QCheckBox, QTableWidget, QTableWidgetItem,
+    QFileDialog, QWidget  # <--- PŘIDEJ QWidget
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QDate
+from PyQt6.QtGui import QPixmap
+import config
+from database_manager import db
+import os
+from datetime import datetime
+
+
+class ChangeStatusDialog(QDialog):
+    """Dialog pro změnu stavu zakázky"""
+
+    status_changed = pyqtSignal()
+
+    def __init__(self, order_id, current_status, parent=None):
+        super().__init__(parent)
+        self.order_id = order_id
+        self.current_status = current_status
+
+        self.setWindowTitle("Změna stavu zakázky")
+        self.setModal(True)
+        self.setMinimumWidth(400)
+
+        self.init_ui()
+
+
+    def init_ui(self):
+        """UI dialogu"""
+        layout = QVBoxLayout(self)
+
+        # Aktuální stav
+        current_label = QLabel(f"Aktuální stav: {self.current_status}")
+        current_label.setStyleSheet("font-weight: bold; font-size: 14px; padding: 10px;")
+        layout.addWidget(current_label)
+
+        # Výběr nového stavu
+        form = QFormLayout()
+
+        self.combo_status = QComboBox()
+        self.combo_status.addItems(config.ORDER_STATUSES)
+        self.combo_status.setCurrentText(self.current_status)
+        form.addRow("Nový stav:", self.combo_status)
+
+        layout.addLayout(form)
+
+        # Tlačítka
+        buttons = QHBoxLayout()
+        btn_cancel = QPushButton("Zrušit")
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_save = QPushButton("Změnit")
+        btn_save.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {config.COLOR_SUCCESS};
+                color: white;
+                padding: 10px 30px;
+                border-radius: 5px;
+                font-weight: bold;
+            }}
+        """)
+        btn_save.clicked.connect(self.change_status)
+
+        buttons.addStretch()
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_save)
+
+        layout.addLayout(buttons)
+
+    def change_status(self):
+        """Změna stavu"""
+        new_status = self.combo_status.currentText()
+
+        try:
+            db.execute_query(
+                "UPDATE orders SET status = ? WHERE id = ?",
+                [new_status, self.order_id]
+            )
+
+            QMessageBox.information(self, "Úspěch", f"Stav změněn na: {new_status}")
+            self.status_changed.emit()
+            self.accept()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Chyba při změně stavu:\n{str(e)}")
+
+
+class OrderItemDialog(QDialog):
+    """Dialog pro přidání/editaci položky zakázky - PROFESIONÁLNÍ"""
+
+    def __init__(self, order_id, item_type="Materiál", item_id=None, parent=None):
+        super().__init__(parent)
+        self.order_id = order_id
+        self.item_type = item_type
+        self.item_id = item_id
+        self.is_edit_mode = item_id is not None
+
+        self.setWindowTitle(f"{'Upravit' if self.is_edit_mode else 'Přidat'} {item_type}")
+        self.setModal(True)
+        self.setMinimumWidth(600)
+
+        self.init_ui()
+
+        if self.is_edit_mode:
+            self.load_item_data()
+
+    def init_ui(self):
+        """UI dialogu"""
+        layout = QVBoxLayout(self)
+
+        # === PRO CIZÍ VÝKONY ZJEDNODUŠENÝ FORMULÁŘ ===
+        if self.item_type == "Cizí výkon":
+            self.init_external_service_ui(layout)
+        else:
+            self.init_standard_ui(layout)
+
+    def init_external_service_ui(self, layout):
+        """Zjednodušené UI pro cizí výkony"""
+        form = QFormLayout()
+
+        # Název
+        self.input_name = QLineEdit()
+        self.input_name.setPlaceholderText("Název služby od externího dodavatele...")
+        form.addRow("Název služby *:", self.input_name)
+
+        # Nákupní cena
+        self.spin_purchase_price = QDoubleSpinBox()
+        self.spin_purchase_price.setRange(0, 999999.99)
+        self.spin_purchase_price.setDecimals(2)
+        self.spin_purchase_price.setSuffix(" Kč")
+        self.spin_purchase_price.valueChanged.connect(self.calculate_external_total)
+        form.addRow("Nákupní cena *:", self.spin_purchase_price)
+
+        # Prodejní cena
+        self.spin_sale_price = QDoubleSpinBox()
+        self.spin_sale_price.setRange(0, 999999.99)
+        self.spin_sale_price.setDecimals(2)
+        self.spin_sale_price.setSuffix(" Kč")
+        self.spin_sale_price.valueChanged.connect(self.calculate_external_total)
+        form.addRow("Prodejní cena *:", self.spin_sale_price)
+
+        # Sleva
+        self.spin_discount = QSpinBox()
+        self.spin_discount.setRange(0, 100)
+        self.spin_discount.setSuffix(" %")
+        self.spin_discount.valueChanged.connect(self.calculate_external_total)
+        form.addRow("Sleva:", self.spin_discount)
+
+        # Auto-výpočet marže
+        self.lbl_margin = QLabel("Marže: 0.00 Kč (0%)")
+        self.lbl_margin.setStyleSheet("color: #27ae60; font-weight: bold;")
+        form.addRow("", self.lbl_margin)
+
+        layout.addLayout(form)
+
+        # Přehled
+        price_box = QVBoxLayout()
+        self.lbl_final_price = QLabel("Finální cena: 0.00 Kč")
+        self.lbl_final_price.setStyleSheet("font-weight: bold; font-size: 18px; color: #27ae60;")
+        price_box.addWidget(self.lbl_final_price)
+
+        price_widget = QWidget()
+        price_widget.setLayout(price_box)
+        price_widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                border: 2px solid #dee2e6;
+            }
+        """)
+        layout.addWidget(price_widget)
+
+        # Tlačítka
+        self.add_buttons(layout)
+
+    def init_standard_ui(self, layout):
+        """Standardní UI pro materiál a práce"""
+        form = QFormLayout()
+
+        # MATERIÁL - možnost vybrat ze skladu
+        if self.item_type == "Materiál":
+            warehouse_layout = QHBoxLayout()
+
+            self.combo_warehouse = QComboBox()
+            self.combo_warehouse.addItem("-- Nová položka --", None)
+            self.load_warehouse_items()
+            self.combo_warehouse.currentIndexChanged.connect(self.on_warehouse_selected)
+            warehouse_layout.addWidget(self.combo_warehouse)
+
+            form.addRow("Ze skladu:", warehouse_layout)
+
+        # PRÁCE - možnost vybrat z číselníku
+        elif self.item_type == "Práce":
+            labor_layout = QHBoxLayout()
+
+            self.combo_labor = QComboBox()
+            self.combo_labor.addItem("-- Nová práce --", None)
+            self.load_labor_types()
+            self.combo_labor.currentIndexChanged.connect(self.on_labor_selected)
+            labor_layout.addWidget(self.combo_labor)
+
+            btn_manage = QPushButton("⚙️")
+            btn_manage.setMaximumWidth(40)
+            btn_manage.setToolTip("Spravovat číselník prací")
+            btn_manage.clicked.connect(self.manage_labor_types)
+            labor_layout.addWidget(btn_manage)
+
+            form.addRow("Typ práce:", labor_layout)
+
+        # Název
+        self.input_name = QLineEdit()
+        self.input_name.setPlaceholderText(f"Název {self.item_type.lower()}...")
+        form.addRow("Název *:", self.input_name)
+
+        # Množství
+        self.spin_quantity = QDoubleSpinBox()
+        self.spin_quantity.setRange(0.01, 9999.99)
+        self.spin_quantity.setValue(1.0)
+        self.spin_quantity.setDecimals(2)
+        self.spin_quantity.valueChanged.connect(self.calculate_total)
+        form.addRow("Množství *:", self.spin_quantity)
+
+        # Jednotka
+        self.combo_unit = QComboBox()
+        if self.item_type == "Práce":
+            self.combo_unit.addItems(["hod", "ks"])
+        else:
+            self.combo_unit.addItems(["ks", "m", "l", "kg", "m²", "m³"])
+        self.combo_unit.setEditable(True)
+        form.addRow("Jednotka:", self.combo_unit)
+
+        # Cena za jednotku
+        self.spin_price = QDoubleSpinBox()
+        self.spin_price.setRange(0, 999999.99)
+        self.spin_price.setDecimals(2)
+        self.spin_price.setSuffix(" Kč")
+        self.spin_price.valueChanged.connect(self.calculate_total)
+        form.addRow("Cena/jedn. *:", self.spin_price)
+
+        # Sleva
+        self.spin_discount = QSpinBox()
+        self.spin_discount.setRange(0, 100)
+        self.spin_discount.setSuffix(" %")
+        self.spin_discount.valueChanged.connect(self.calculate_total)
+        form.addRow("Sleva:", self.spin_discount)
+
+        # DPH
+        self.combo_vat = QComboBox()
+        self.combo_vat.addItems(["21%", "15%", "12%", "0%"])
+        self.combo_vat.currentTextChanged.connect(self.calculate_total)
+        form.addRow("DPH:", self.combo_vat)
+
+        layout.addLayout(form)
+
+        # Přehled cen
+        price_box = QVBoxLayout()
+        price_box.setSpacing(5)
+
+        self.lbl_price_base = QLabel("Základ: 0.00 Kč")
+        self.lbl_price_discount = QLabel("Po slevě: 0.00 Kč")
+        self.lbl_price_vat = QLabel("DPH: 0.00 Kč")
+        self.lbl_price_total = QLabel("Celkem: 0.00 Kč")
+        self.lbl_price_total.setStyleSheet("font-weight: bold; font-size: 16px; color: #27ae60;")
+
+        price_box.addWidget(self.lbl_price_base)
+        price_box.addWidget(self.lbl_price_discount)
+        price_box.addWidget(self.lbl_price_vat)
+        price_box.addWidget(self.lbl_price_total)
+
+        price_widget = QWidget()
+        price_widget.setLayout(price_box)
+        price_widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                border: 2px solid #dee2e6;
+            }
+        """)
+        layout.addWidget(price_widget)
+
+        # Tlačítka
+        self.add_buttons(layout)
+
+    def add_buttons(self, layout):
+        """Přidání tlačítek"""
+        buttons = QHBoxLayout()
+        btn_cancel = QPushButton("Zrušit")
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_save = QPushButton("💾 Uložit")
+        btn_save.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {config.COLOR_SUCCESS};
+                color: white;
+                padding: 12px 30px;
+                border-radius: 5px;
+                font-weight: bold;
+                font-size: 14px;
+            }}
+        """)
+        btn_save.clicked.connect(self.save)
+
+        buttons.addStretch()
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_save)
+
+        layout.addLayout(buttons)
+
+    def calculate_external_total(self):
+        """Výpočet pro cizí výkony"""
+        purchase = self.spin_purchase_price.value()
+        sale = self.spin_sale_price.value()
+        discount = self.spin_discount.value()
+
+        # Finální cena po slevě
+        final = sale * (1 - discount / 100)
+
+        # Marže
+        margin = final - purchase
+        margin_percent = (margin / purchase * 100) if purchase > 0 else 0
+
+        # Aktualizace
+        self.lbl_margin.setText(f"Marže: {margin:.2f} Kč ({margin_percent:.1f}%)")
+        self.lbl_final_price.setText(f"Finální cena: {final:.2f} Kč")
+
+        # Změň barvu podle marže
+        if margin >= 0:
+            self.lbl_margin.setStyleSheet("color: #27ae60; font-weight: bold;")
+        else:
+            self.lbl_margin.setStyleSheet("color: #e74c3c; font-weight: bold;")
+
+    def load_warehouse_items(self):
+        """Načtení položek ze skladu"""
+        try:
+            items = db.execute_query(
+                "SELECT id, name, code, price_sale FROM warehouse WHERE quantity > 0 ORDER BY name"
+            )
+
+            if items:
+                for item in items:
+                    self.combo_warehouse.addItem(f"{item[1]} ({item[2]}) - {item[3]:.2f} Kč", item[0])
+
+        except Exception as e:
+            print(f"Chyba při načítání skladu: {e}")
+
+    def load_labor_types(self):
+        """Načtení typů prací z číselníku"""
+        try:
+            items = db.execute_query(
+                "SELECT id, name, price FROM codebook_repair_types WHERE active = 1 ORDER BY name"
+            )
+
+            if items:
+                for item in items:
+                    self.combo_labor.addItem(f"{item[1]} - {item[2]:.2f} Kč/hod", item[0])
+
+        except Exception as e:
+            print(f"Chyba při načítání prací: {e}")
+
+    def on_warehouse_selected(self, index):
+        """Při výběru položky ze skladu"""
+        item_id = self.combo_warehouse.currentData()
+        if item_id:
+            try:
+                item = db.execute_query(
+                    "SELECT name, unit, price_sale FROM warehouse WHERE id = ?",
+                    [item_id]
+                )
+                if item and len(item) > 0:
+                    self.input_name.setText(item[0][0])
+                    self.combo_unit.setCurrentText(item[0][1])
+                    self.spin_price.setValue(item[0][2])
+                    self.calculate_total()
+            except Exception as e:
+                print(f"Chyba: {e}")
+
+    def on_labor_selected(self, index):
+        """Při výběru práce z číselníku"""
+        item_id = self.combo_labor.currentData()
+        if item_id:
+            try:
+                item = db.execute_query(
+                    "SELECT name, price FROM codebook_repair_types WHERE id = ?",
+                    [item_id]
+                )
+                if item and len(item) > 0:
+                    self.input_name.setText(item[0][0])
+                    self.combo_unit.setCurrentText("hod")
+                    self.spin_price.setValue(item[0][1])
+                    self.calculate_total()
+            except Exception as e:
+                print(f"Chyba: {e}")
+
+    def manage_labor_types(self):
+        """Správa číselníku prací"""
+        dialog = LaborTypesDialog(self)
+        if dialog.exec():
+            self.combo_labor.clear()
+            self.combo_labor.addItem("-- Nová práce --", None)
+            self.load_labor_types()
+
+    def calculate_total(self):
+        """Výpočet celkové ceny"""
+        quantity = self.spin_quantity.value()
+        unit_price = self.spin_price.value()
+        discount = self.spin_discount.value()
+        vat_text = self.combo_vat.currentText().replace("%", "")
+        vat_rate = float(vat_text) / 100
+
+        # Základ
+        base = quantity * unit_price
+
+        # Po slevě
+        after_discount = base * (1 - discount / 100)
+
+        # DPH
+        vat_amount = after_discount * vat_rate
+
+        # Celkem
+        total = after_discount + vat_amount
+
+        # Aktualizace labelů
+        self.lbl_price_base.setText(f"Základ: {base:.2f} Kč")
+        self.lbl_price_discount.setText(f"Po slevě (-{discount}%): {after_discount:.2f} Kč")
+        self.lbl_price_vat.setText(f"DPH ({vat_text}%): {vat_amount:.2f} Kč")
+        self.lbl_price_total.setText(f"Celkem: {total:.2f} Kč")
+
+    def load_item_data(self):
+        """Načtení dat položky pro editaci"""
+        try:
+            if self.item_type == "Cizí výkon":
+                # Pro cizí výkony načti jinak
+                item = db.execute_query(
+                    "SELECT name, unit_price, total_price FROM order_items WHERE id = ?",
+                    [self.item_id]
+                )
+
+                if item and len(item) > 0:
+                    self.input_name.setText(item[0][0])
+                    # Pro jednoduchost použijeme unit_price jako prodejní a total_price jako finální
+                    self.spin_sale_price.setValue(item[0][1])
+                    # Pokud máme uložené nákupní ceny, načti je (zatím neimplementováno v DB)
+                    self.calculate_external_total()
+            else:
+                # Standardní načtení
+                item = db.execute_query(
+                    "SELECT name, quantity, unit, unit_price FROM order_items WHERE id = ?",
+                    [self.item_id]
+                )
+
+                if item and len(item) > 0:
+                    self.input_name.setText(item[0][0])
+                    self.spin_quantity.setValue(item[0][1])
+                    self.combo_unit.setCurrentText(item[0][2])
+                    self.spin_price.setValue(item[0][3])
+                    self.calculate_total()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Chyba při načítání:\n{str(e)}")
+
+    def save(self):
+        """Uložení položky"""
+        if not self.input_name.text():
+            QMessageBox.warning(self, "Chyba", "Vyplňte název položky!")
+            return
+
+        try:
+            name = self.input_name.text()
+
+            if self.item_type == "Cizí výkon":
+                # Uložení cizího výkonu
+                sale_price = self.spin_sale_price.value()
+                discount = self.spin_discount.value()
+                final_price = sale_price * (1 - discount / 100)
+
+                if self.is_edit_mode:
+                    db.execute_query(
+                        """UPDATE order_items SET
+                           name = ?, quantity = 1, unit = 'ks',
+                           unit_price = ?, total_price = ?
+                           WHERE id = ?""",
+                        [name, sale_price, final_price, self.item_id]
+                    )
+                else:
+                    db.execute_query(
+                        """INSERT INTO order_items
+                           (order_id, item_type, item_name, name, quantity, unit, unit_price, total_price)
+                           VALUES (?, ?, ?, ?, 1, 'ks', ?, ?)""",
+                        [self.order_id, self.item_type, name, name, sale_price, final_price]
+                    )
+
+            else:
+                # Standardní uložení
+                quantity = self.spin_quantity.value()
+                unit = self.combo_unit.currentText()
+                unit_price = self.spin_price.value()
+                discount = self.spin_discount.value()
+                total = (quantity * unit_price) * (1 - discount / 100)
+
+                if self.is_edit_mode:
+                    db.execute_query(
+                        """UPDATE order_items SET
+                           name = ?, quantity = ?, unit = ?, unit_price = ?, total_price = ?
+                           WHERE id = ?""",
+                        [name, quantity, unit, unit_price, total, self.item_id]
+                    )
+                else:
+                    db.execute_query(
+                        """INSERT INTO order_items
+                           (order_id, item_type, name, quantity, unit, unit_price, total_price)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        [self.order_id, self.item_type, name, quantity, unit, unit_price, total]
+                    )
+
+                # Pokud je materiál ze skladu, odečti ze skladu
+                if self.item_type == "Materiál" and hasattr(self, 'combo_warehouse'):
+                    warehouse_id = self.combo_warehouse.currentData()
+                    if warehouse_id:
+                        db.execute_query(
+                            "UPDATE warehouse SET quantity = quantity - ? WHERE id = ?",
+                            [quantity, warehouse_id]
+                        )
+
+            self.accept()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Chyba při ukládání:\n{str(e)}")
+
+class LaborTypesDialog(QDialog):
+    """Dialog pro správu číselníku prací"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Číselník prací")
+        self.setModal(True)
+        self.setMinimumSize(700, 500)
+
+        self.init_ui()
+        self.load_data()
+
+    def init_ui(self):
+        """UI dialogu"""
+        layout = QVBoxLayout(self)
+
+        # Tlačítka
+        buttons = QHBoxLayout()
+
+        btn_add = QPushButton("+ Přidat práci")
+        btn_add.setStyleSheet(f"background-color: {config.COLOR_SUCCESS}; color: white; padding: 8px;")
+        btn_add.clicked.connect(self.add_labor)
+
+        btn_edit = QPushButton("✏️ Upravit")
+        btn_edit.clicked.connect(self.edit_labor)
+
+        btn_delete = QPushButton("🗑️ Smazat")
+        btn_delete.setStyleSheet(f"background-color: {config.COLOR_DANGER}; color: white; padding: 8px;")
+        btn_delete.clicked.connect(self.delete_labor)
+
+        buttons.addWidget(btn_add)
+        buttons.addWidget(btn_edit)
+        buttons.addWidget(btn_delete)
+        buttons.addStretch()
+
+        layout.addLayout(buttons)
+
+        # Tabulka
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Název práce", "Cena/hod", "Aktivní", "ID"])
+        self.table.setColumnHidden(3, True)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.doubleClicked.connect(self.edit_labor)
+
+        layout.addWidget(self.table)
+
+        # Zavřít
+        btn_close = QPushButton("Zavřít")
+        btn_close.clicked.connect(self.accept)
+        layout.addWidget(btn_close)
+
+    def load_data(self):
+        """Načtení dat"""
+        try:
+            items = db.execute_query(
+                "SELECT id, name, price, active FROM codebook_repair_types ORDER BY name"
+            )
+
+            self.table.setRowCount(0)
+
+            for item in items:
+                row = self.table.rowCount()
+                self.table.insertRow(row)
+
+                self.table.setItem(row, 0, QTableWidgetItem(item[1]))
+                self.table.setItem(row, 1, QTableWidgetItem(f"{item[2]:.2f} Kč"))
+                self.table.setItem(row, 2, QTableWidgetItem("Ano" if item[3] else "Ne"))
+                self.table.setItem(row, 3, QTableWidgetItem(str(item[0])))
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Chyba při načítání:\n{str(e)}")
+
+    def add_labor(self):
+        """Přidání práce"""
+        dialog = LaborTypeEditDialog(self)
+        if dialog.exec():
+            self.load_data()
+
+    def edit_labor(self):
+        """Úprava práce"""
+        if self.table.currentRow() < 0:
+            return
+
+        labor_id = int(self.table.item(self.table.currentRow(), 3).text())
+        dialog = LaborTypeEditDialog(labor_id, self)
+        if dialog.exec():
+            self.load_data()
+
+    def delete_labor(self):
+        """Smazání práce"""
+        if self.table.currentRow() < 0:
+            return
+
+        labor_id = int(self.table.item(self.table.currentRow(), 3).text())
+        name = self.table.item(self.table.currentRow(), 0).text()
+
+        reply = QMessageBox.question(
+            self,
+            "Smazat?",
+            f"Opravdu smazat práci '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                db.execute_query("DELETE FROM codebook_repair_types WHERE id = ?", [labor_id])
+                self.load_data()
+            except Exception as e:
+                QMessageBox.critical(self, "Chyba", f"Chyba:\n{str(e)}")
+
+
+class LaborTypeEditDialog(QDialog):
+    """Dialog pro editaci typu práce"""
+
+    def __init__(self, labor_id=None, parent=None):
+        super().__init__(parent)
+        self.labor_id = labor_id
+        self.is_edit = labor_id is not None
+
+        self.setWindowTitle("Upravit práci" if self.is_edit else "Nová práce")
+        self.setModal(True)
+        self.setMinimumWidth(400)
+
+        self.init_ui()
+
+        if self.is_edit:
+            self.load_data()
+
+    def init_ui(self):
+        """UI"""
+        layout = QVBoxLayout(self)
+
+        form = QFormLayout()
+
+        self.input_name = QLineEdit()
+        form.addRow("Název práce:", self.input_name)
+
+        self.spin_price = QDoubleSpinBox()
+        self.spin_price.setRange(0, 99999.99)
+        self.spin_price.setSuffix(" Kč/hod")
+        form.addRow("Hodinová sazba:", self.spin_price)
+
+        self.check_active = QCheckBox("Aktivní")
+        self.check_active.setChecked(True)
+        form.addRow("", self.check_active)
+
+        layout.addLayout(form)
+
+        buttons = QHBoxLayout()
+        btn_cancel = QPushButton("Zrušit")
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_save = QPushButton("Uložit")
+        btn_save.setStyleSheet(f"background-color: {config.COLOR_SUCCESS}; color: white; padding: 10px;")
+        btn_save.clicked.connect(self.save)
+
+        buttons.addStretch()
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_save)
+
+        layout.addLayout(buttons)
+
+    def load_data(self):
+        """Načtení dat"""
+        try:
+            item = db.execute_query(
+                "SELECT name, price, active FROM codebook_repair_types WHERE id = ?",
+                [self.labor_id]
+            )
+
+            if item:
+                self.input_name.setText(item[0][0])
+                self.spin_price.setValue(item[0][1])
+                self.check_active.setChecked(item[0][2] == 1)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Chyba:\n{str(e)}")
+
+    def save(self):
+        """Uložení"""
+        if not self.input_name.text():
+            QMessageBox.warning(self, "Chyba", "Vyplňte název!")
+            return
+
+        try:
+            name = self.input_name.text()
+            price = self.spin_price.value()
+            active = 1 if self.check_active.isChecked() else 0
+
+            if self.is_edit:
+                db.execute_query(
+                    "UPDATE codebook_repair_types SET name = ?, price = ?, active = ? WHERE id = ?",
+                    [name, price, active, self.labor_id]
+                )
+            else:
+                db.execute_query(
+                    "INSERT INTO codebook_repair_types (name, price, active) VALUES (?, ?, ?)",
+                    [name, price, active]
+                )
+
+            self.accept()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Chyba:\n{str(e)}")

@@ -1,0 +1,730 @@
+# 📋 MODUL ZAKÁZKY - KOMPLETNÍ POPIS SOUBORŮ
+
+---
+
+## 📁 STRUKTURA MODULU
+
+```
+modules/orders/
+├── __init__.py                    # Inicializace modulu
+├── module_orders.py               # Hlavní vstupní bod - seznam zakázek
+├── order_form.py                  # Dialog pro vytvoření/editaci zakázky
+├── order_detail.py                # Detail zakázky - kompletní okno
+├── order_items.py                 # Správa položek zakázky (díly, práce, ostatní)
+├── order_widgets.py               # Pomocné dialogy a widgety
+├── order_export.py                # Export do PDF (zakázkový list, proforma, faktura)
+├── order_analytics.py             # Analýzy a statistiky zakázek
+├── order_preview.py               # Náhled dokumentů před tiskem
+├── order_work_order_editor.py     # Editor zakázkového listu
+└── order_work_order_preview.py    # Náhled zakázkového listu
+```
+
+---
+
+### **1. `__init__.py`** 📦
+
+**Účel:** Inicializační soubor modulu
+
+**Obsahuje:**
+```python
+from .module_orders import OrdersModule
+from .order_form import OrderFormDialog
+from .order_detail import OrderDetailWindow
+
+__all__ = ['OrdersModule', 'OrderFormDialog', 'OrderDetailWindow']
+```
+
+---
+
+### **2. `module_orders.py`** ⭐ HLAVNÍ SOUBOR
+
+**Účel:** Hlavní vstupní bod modulu - seznam všech zakázek
+
+**Obsahuje:**
+
+**Hlavička:**
+- Titulek "📋 Zakázky"
+- Tlačítka pro rychlé vytvoření:
+  - ➕ Nová zakázka (zelená)
+  - ➕ Volný prodej (modrá)
+  - ➕ Nabídka (oranžová)
+
+**Rychlý přehled (statistiky):**
+- 📊 Celkem zakázek
+- ⏳ V přípravě
+- 📂 Otevřená
+- 🔧 Rozpracovaná
+
+**Filtry:**
+- 🔍 Vyhledávání (číslo, zákazník, motorka)
+- Typ zakázky (Vše, Zakázka, Volný prodej, Nabídka, Garance, Reklamace)
+- Stav zakázky (Vše, V přípravě, Otevřená, Rozpracovaná, Čeká na díly, Hotová, Archiv)
+- 🔄 Tlačítko Reset filtrů
+
+**Tabulka zakázek:**
+- Číslo zakázky
+- Typ
+- Stav (barevně odlišený badge)
+- Zákazník
+- Motorka (značka model SPZ)
+- Datum vytvoření
+- Datum dokončení
+- Cena celkem (Kč)
+- Poznámka (zkrácená na 50 znaků)
+- ID (skryté)
+
+**Kontextové menu (pravý klik):**
+- 📖 Otevřít detail
+- ✏️ Upravit
+- 📋 Kopírovat číslo zakázky
+- 🔄 Změnit stav (submenu se všemi stavy)
+- 🗑️ Smazat
+
+**Funkce:**
+- Dvojklik otevře detail zakázky
+- Automatické načítání a filtrování
+- Kopírování čísla zakázky do schránky
+- Rychlá změna stavu
+- Správa více otevřených oken detailů
+
+---
+
+### **3. `order_form.py`** 📝
+
+**Účel:** Dialog pro vytvoření nebo editaci zakázky
+
+**Obsahuje:**
+
+**Formulář:**
+- Typ zakázky (ComboBox: Zakázka, Volný prodej, Nabídka, Garance, Reklamace)
+- Stav (ComboBox: V přípravě, Otevřená, Rozpracovaná, Čeká na díly, Hotová, Archiv)
+- SPZ motorky * (input + tlačítko 🔍 Vyhledat)
+- Info o motorce (automaticky načteno, read-only, zelený box)
+- Info o zákazníkovi (automaticky načteno, read-only, zelený box)
+- Poznámka k zakázce (TextEdit)
+
+**Funkcionalita:**
+- Automatický převod SPZ na velká písmena
+- Vyhledání motorky podle SPZ
+- Pokud motorka neexistuje → nabídka vytvoření nové
+- Automatické načtení zákazníka z motorky
+- Varování pokud motorka nemá zákazníka
+- Generování čísla zakázky (formát: ROK + pořadové číslo, např. 20250001)
+
+**Validace:**
+- Kontrola zda je vybrána motorka
+- Kontrola zda motorka má zákazníka
+
+**Tlačítka:**
+- Zrušit
+- Uložit (zelené)
+
+---
+
+### **4. `order_detail.py`** 📊 DETAIL ZAKÁZKY
+
+**Účel:** Kompletní okno s detailem zakázky - profesionální verze
+
+**Obsahuje:**
+
+**Horní akční lišta (45px, kompaktní):**
+- Číslo zakázky (např. "Zakázka č. 20250001")
+- Badge stavu (barevný, zaoblený)
+- Aktuální cena (zelená, výrazná)
+- Tlačítko "Změnit stav" (modré)
+- Tlačítko "✓ Uložit" (zelené)
+- Tlačítko "✕ Smazat" (červené)
+
+**Hlavní obsah - Split View (70:30):**
+
+**LEVÝ PANEL - Záložky:**
+
+📋 **Záložka 1: Základní informace**
+- **Zákazník:**
+  - Jméno a příjmení (proklik na detail zákazníka)
+  - Telefon, email
+  - Adresa
+
+- **Fakturační údaje:**
+  - Checkbox "Jiné fakturační údaje"
+  - Název firmy / Jméno pro fakturu
+  - IČO
+  - Fakturační adresa
+
+- **Motorka:**
+  - Značka Model (SPZ) (proklik na detail motorky)
+  - VIN
+
+- **Poznámky:**
+  - Poznámka k zakázce (editovatelná)
+  - Poznámky z motorky (read-only)
+  - Poznámky ze zákazníka (read-only)
+
+📦 **Záložka 2: Položky zakázky**
+- Tři podzáložky:
+  - 🔧 **Materiál** - tabulka s tlačítky (Přidat/Upravit/Smazat)
+  - 👷 **Práce** - tabulka s tlačítky
+  - 🚚 **Cizí výkon** - tabulka s tlačítky
+
+- Tabulky obsahují:
+  - Název položky
+  - Množství
+  - Jednotka
+  - Cena/jedn.
+  - Sleva %
+  - Cena celkem
+  - ID (skryté)
+
+📁 **Záložka 3: Dokumenty a fotky**
+- Seznam dokumentů
+- Seznam fotek
+- Tlačítka:
+  - 📄 Importovat dokument
+  - 📸 Importovat fotku
+
+**PRAVÝ PANEL - Náhled a akce:**
+- 📋 **Zakázkový list** → otevře editor zakázkového listu
+- 📊 **Proforma** → náhled proformy s tiskem/PDF
+- 🧾 **Faktura** → vytvoření faktury
+
+**Funkce:**
+- Proklik na zákazníka
+- Proklik na motorku
+- Import dokumentů (PDF, Word, Excel)
+- Import fotek (PNG, JPG, JPEG, BMP)
+- Automatický přepočet ceny zakázky
+
+---
+
+### **5. `order_items.py`** 📦
+
+**Účel:** Widget pro správu položek zakázky (díly, práce, ostatní)
+
+**Obsahuje:**
+
+**Hlavička:**
+- 📦 Položky zakázky
+- Tlačítka:
+  - ➕ Díl (zelené)
+  - ➕ Práce (modré)
+  - ➕ Ostatní (oranžové)
+  - 🗑️ Smazat (červené)
+
+**Tabulka položek:**
+- Typ (Díl, Práce, Ostatní)
+- Název
+- Množství
+- Jednotka (ks, hod, m, l, kg, m², set)
+- Cena/jedn.
+- DPH % (21%, 15%, 12%, 0%)
+- Cena celkem (s DPH)
+- ID (skryté)
+
+**Souhrn:**
+- Celková cena s DPH
+- Celková cena bez DPH
+- Formátování s oddělovačem tisíců
+
+**Dialog pro přidání/editaci položky:**
+- Typ položky
+- Název položky *
+- Množství
+- Jednotka (editovatelný ComboBox)
+- Cena/jedn. (bez DPH)
+- Sazba DPH
+- Automatický výpočet:
+  - Cena bez DPH
+  - DPH částka
+  - Cena s DPH (velká, zelená)
+
+**Funkce:**
+- Dvojklik pro editaci
+- Automatický přepočet celkové ceny zakázky
+- Bezpečné zaokrouhlování (ochrana před floating point chybami)
+- Kompatibilita se starším DB schématem
+
+---
+
+### **6. `order_widgets.py`** 🧩
+
+**Účel:** Pomocné dialogy a komponenty pro zakázky
+
+**Obsahuje:**
+
+**ChangeStatusDialog** - Dialog pro změnu stavu
+- Zobrazení aktuálního stavu
+- Výběr nového stavu (ComboBox)
+- Tlačítka: Zrušit / Změnit
+- Signal `status_changed` pro notifikaci
+
+**OrderItemDialog** - Dialog pro přidání/editaci položky (profesionální)
+- **Pro Materiál:**
+  - Výběr ze skladu (ComboBox)
+  - Automatické vyplnění ceny a jednotky
+  - Odečet ze skladu při uložení
+
+- **Pro Práce:**
+  - Výběr z číselníku prací
+  - Tlačítko ⚙️ pro správu číselníku
+  - Hodinová sazba z číselníku
+
+- **Pro Cizí výkon (zjednodušený formulář):**
+  - Název služby
+  - Nákupní cena
+  - Prodejní cena
+  - Sleva %
+  - Automatický výpočet marže
+  - Finální cena
+
+- **Společné:**
+  - Název položky
+  - Množství
+  - Jednotka
+  - Cena bez DPH
+  - DPH sazba
+  - Sleva %
+  - Automatický přepočet všech hodnot
+
+**LaborTypesDialog** - Správa číselníku prací
+- Tabulka prací (Název, Cena/hod, Aktivní)
+- Tlačítka: Přidat / Upravit / Smazat
+- Dvojklik pro editaci
+
+**LaborTypeEditDialog** - Editace typu práce
+- Název práce
+- Hodinová sazba (Kč/hod)
+- Checkbox Aktivní
+- CRUD operace v tabulce `codebook_repair_types`
+
+---
+
+### **7. `order_export.py`** 📤
+
+**Účel:** Export zakázek do PDF - profesionální verze
+
+**Obsahuje:**
+
+**OrderExporter třída:**
+
+**Metody exportu:**
+- `export_work_order()` - Export zakázkového listu
+- `export_proforma()` - Export proformy
+- `export_invoice()` - Export faktury
+- `export_work_order_with_data()` - Export s daty z editoru
+
+**Zakázkový list obsahuje:**
+- Hlavička (název firmy, logo)
+- Číslo zakázky, datum
+- Údaje o servisu
+- Údaje o zákazníkovi
+- Informace o vozidle (značka, model, SPZ, VIN, km, barva)
+- Stav PHM
+- Výbava vozidla / viditelná poškození
+- Popis prací / požadavky zákazníka
+- Prostor pro rozšíření zakázky
+- Předběžný termín dokončení
+- Odhad ceny vč. DPH
+- Podpisy (servisní poradce, zákazník)
+- Patička (datum vytištění, upozornění)
+
+**Proforma obsahuje:**
+- Hlavička
+- Číslo zakázky, datum
+- Údaje zákazníka
+- Vozidlo
+- Tabulka položek (Popis, Množství, Cena/jedn., Celkem)
+- Celková cena
+- Platnost nabídky (14 dní)
+
+**Faktura obsahuje:**
+- Číslo faktury (automaticky generované)
+- Dodavatel (nastavení firmy)
+- Odběratel (zákazník)
+- Tabulka položek s DPH
+- Rekapitulace DPH
+- Celková cena
+- Bankovní spojení
+- QR kód pro platbu
+
+**Funkce:**
+- Registrace fontů pro češtinu (DejaVu)
+- Automatické otevření PDF po exportu
+- Dialog pro výběr umístění souboru
+- Formátování adres
+- Generování čísla faktury
+- Nastavení firmy z databáze
+
+---
+
+### **8. `order_analytics.py`** 📊
+
+**Účel:** Analýzy a statistiky zakázek
+
+**Obsahuje:**
+
+**Hlavička:**
+- 📊 Analýzy zakázek
+- Filtr období (ComboBox):
+  - Tento měsíc
+  - Poslední 3 měsíce
+  - Poslední 6 měsíců
+  - Tento rok
+  - Vše
+- 🔄 Tlačítko Obnovit
+
+**Statistické boxy (barevné karty):**
+- 📋 Celkem zakázek (modrá)
+- 🔄 Aktivní zakázky (oranžová)
+- ✅ Dokončené (zelená)
+- 💰 Celkový obrat (tyrkysová)
+- 📊 Průměrná cena zakázky (fialová)
+- ⏳ Čeká na díly (oranžová)
+
+**Tabulky:**
+- **Zakázky podle typu:**
+  - Typ (Zakázka, Volný prodej, Nabídka...)
+  - Počet
+  - Obrat
+
+- **Zakázky podle stavu:**
+  - Stav (barevný badge)
+  - Počet
+  - Obrat
+
+- **Top 10 zákazníků:**
+  - Jméno zákazníka
+  - Počet zakázek
+  - Celkový obrat
+
+**Funkce:**
+- Automatické načítání při změně filtru
+- SQL agregace podle období
+- Barevné zvýraznění stavů
+- Formátování cen s oddělovači
+
+---
+
+### **9. `order_preview.py`** 👁️
+
+**Účel:** Náhled dokumentů před tiskem (proforma)
+
+**Obsahuje:**
+
+**ProformaPreviewDialog:**
+- Hlavička "📋 Náhled proformy"
+- HTML náhled v QTextBrowser
+- Profesionální vzhled (CSS styling)
+- Tlačítka:
+  - Zavřít
+  - 🖨️ Vytisknout (modré)
+  - 💾 Uložit jako PDF (zelené)
+
+**Obsah náhledu:**
+- Číslo zakázky
+- Datum
+- Zákazník (jméno, adresa, telefon)
+- Vozidlo
+- Tabulka položek
+- Celková cena
+- Platnost nabídky
+
+**Funkce:**
+- Tisk přes QPrinter/QPrintDialog
+- Export do PDF přes order_export
+- Automatické formátování HTML
+- Responzivní zobrazení
+
+---
+
+### **10. `order_work_order_editor.py`** ✏️
+
+**Účel:** Editor zakázkového listu před tiskem
+
+**Obsahuje:**
+
+**Hlavička:**
+- 📄 Zakázkový list - úprava před tiskem
+
+**Scrollovatelný formulář:**
+
+**Základní údaje (read-only):**
+- Číslo zakázky
+- Zákazník
+- Vozidlo
+
+**Termíny:**
+- Datum příjmu (DateEdit s kalendářem)
+- Předběžný termín dokončení
+
+**Stav vozidla při příjmu:**
+- Stav PHM (např. 1/2, 3/4, plná)
+- Stav km (tachometr)
+- Výbava vozidla / viditelná poškození (TextEdit)
+
+**Popis prací / požadavky zákazníka:**
+- Automaticky vyplněno položkami ze zakázky
+- Editovatelné (velké TextEdit)
+- Formátování podle typu položek (=== MATERIÁL ===, === PRÁCE ===)
+
+**Rozšíření zakázky / vyjádření opravny:**
+- Prostor pro dodatečné práce
+- Prázdné řádky pro ruční doplnění
+
+**Předběžná cena:**
+- Odhad ceny vč. DPH
+- Checkbox "Použít cenu ze zakázky"
+- Možnost ručního zadání
+
+**Dodatečné poznámky:**
+- TextEdit pro další poznámky
+
+**Tlačítka:**
+- Zrušit
+- 👁️ Náhled (modré)
+- 🖨️ Vytisknout / Uložit PDF (zelené)
+
+**Funkce:**
+- Automatické vyplnění z dat zakázky
+- Skupinování položek podle typu
+- Propojení s order_export
+
+---
+
+### **11. `order_work_order_preview.py`** 🔍
+
+**Účel:** Náhled zakázkového listu před finálním tiskem
+
+**Obsahuje:**
+
+**Hlavička:**
+- 📄 Náhled zakázkového listu
+
+**HTML náhled:**
+- ZAKÁZKOVÝ LIST (velký nadpis)
+- Číslo zakázky, datum příjmu, termín dokončení
+- Zákazník
+- Vozidlo
+- Stav vozidla (PHM, km, výbava)
+- Popis prací (monospace font, white-space: pre-wrap)
+- Rozšíření zakázky (žlutý box)
+- Předběžná cena (velká, zelená)
+- Poznámky
+
+**Tlačítka:**
+- Zavřít
+- ✏️ Upravit (modré) → vrací se k editoru
+
+**Funkce:**
+- Live preview před tiskem
+- Barevné zvýraznění sekcí
+- Profesionální CSS styling
+- Možnost návratu k úpravám
+
+---
+
+## 🎨 VIZUALIZACE STRUKTURY
+
+```
+📋 MODUL ZAKÁZKY
+│
+├─ 📋 Seznam zakázek (hlavní view)
+│  ├─ 📊 Rychlé statistiky (celkem, aktivní, rozpracované...)
+│  ├─ 🔍 Filtry (vyhledávání, typ, stav)
+│  ├─ 📑 Tabulka zakázek
+│  │  ├─ Barevné stavy
+│  │  ├─ Dvojklik → detail
+│  │  └─ Pravý klik → kontextové menu
+│  ├─ ➕ Tlačítka rychlého vytvoření
+│  │  ├─ Nová zakázka
+│  │  ├─ Volný prodej
+│  │  └─ Nabídka
+│  └─ 🔄 Reset filtrů
+│
+├─ 📝 Formulář zakázky
+│  ├─ Typ a stav
+│  ├─ 🔍 Vyhledání motorky dle SPZ
+│  ├─ 🏍️ Info o motorce (automaticky)
+│  ├─ 👤 Info o zákazníkovi (automaticky)
+│  └─ 📝 Poznámka
+│
+├─ 📊 Detail zakázky (velké okno)
+│  ├─ ⚡ Akční lišta (kompaktní)
+│  │  ├─ Číslo zakázky
+│  │  ├─ Badge stavu
+│  │  ├─ 💰 Aktuální cena
+│  │  ├─ Změnit stav
+│  │  ├─ ✓ Uložit
+│  │  └─ ✕ Smazat
+│  │
+│  ├─ 📋 Záložka: Základní informace
+│  │  ├─ 👤 Zákazník (proklik)
+│  │  ├─ 🧾 Fakturační údaje
+│  │  ├─ 🏍️ Motorka (proklik)
+│  │  └─ 📝 Poznámky
+│  │
+│  ├─ 📦 Záložka: Položky zakázky
+│  │  ├─ 🔧 Materiál
+│  │  │  ├─ Ze skladu
+│  │  │  └─ Ruční zadání
+│  │  ├─ 👷 Práce
+│  │  │  ├─ Z číselníku
+│  │  │  └─ Hodinová sazba
+│  │  └─ 🚚 Cizí výkon
+│  │     ├─ Nákupní cena
+│  │     ├─ Prodejní cena
+│  │     └─ Marže
+│  │
+│  ├─ 📁 Záložka: Dokumenty a fotky
+│  │  ├─ 📄 Import dokumentů
+│  │  └─ 📸 Import fotek
+│  │
+│  └─ 🖨️ Panel dokumentů
+│     ├─ 📋 Zakázkový list
+│     ├─ 📊 Proforma
+│     └─ 🧾 Faktura
+│
+├─ 📄 Editor zakázkového listu
+│  ├─ 📅 Termíny (příjem, dokončení)
+│  ├─ 🚗 Stav vozidla (PHM, km, výbava)
+│  ├─ 🔧 Popis prací (z položek)
+│  ├─ 📝 Rozšíření zakázky
+│  ├─ 💰 Předběžná cena
+│  ├─ 👁️ Náhled
+│  └─ 🖨️ Tisk/PDF
+│
+├─ 📤 Export dokumentů (PDF)
+│  ├─ 📋 Zakázkový list
+│  │  ├─ Kompletní info
+│  │  ├─ Podpisy
+│  │  └─ Profesionální vzhled
+│  ├─ 📊 Proforma
+│  │  ├─ Cenová nabídka
+│  │  ├─ Tabulka položek
+│  │  └─ Platnost 14 dní
+│  └─ 🧾 Faktura
+│     ├─ Dodavatel/Odběratel
+│     ├─ Položky s DPH
+│     ├─ Rekapitulace
+│     └─ QR kód
+│
+└─ 📊 Analýzy
+   ├─ 📈 Statistické karty
+   ├─ 📋 Zakázky podle typu
+   ├─ 📊 Zakázky podle stavu
+   └─ 🏆 Top 10 zákazníků
+```
+
+---
+
+## 🔗 PROPOJENÍ S OSTATNÍMI MODULY
+
+**Zákazníci (module_customers):**
+- Proklik z detailu zakázky na zákazníka
+- Automatické načtení zákazníka z motorky
+- Fakturační údaje zákazníka
+
+**Motorky/Vozidla (module_vehicles):**
+- Vyhledání motorky podle SPZ
+- Proklik z detailu zakázky na motorku
+- Vytvoření nové motorky přímo z formuláře zakázky
+
+**Sklad (warehouse):**
+- Výběr materiálu ze skladu
+- Automatický odpočet množství
+- Nákupní/prodejní ceny
+
+**Číselníky (codebooks):**
+- Typy prací a hodinové sazby
+- Typy zakázek a stavy
+- Měrné jednotky
+- Sazby DPH
+
+**Administrativa (module_administration):**
+- Export faktur
+- Nastavení firmy (logo, kontakty, IČO, DIČ)
+- Číselné řady dokumentů
+
+---
+
+## 💾 DATABÁZOVÉ TABULKY
+
+**orders** - Hlavní tabulka zakázek
+```sql
+- id (PK)
+- order_number (unikátní číslo)
+- order_type (typ zakázky)
+- status (stav)
+- customer_id (FK → customers)
+- vehicle_id (FK → vehicles)
+- created_date
+- completed_date
+- note
+- total_price
+```
+
+**order_items** - Položky zakázky
+```sql
+- id (PK)
+- order_id (FK → orders)
+- warehouse_id (FK → warehouse, nullable)
+- item_type (Díl/Práce/Ostatní/Materiál/Cizí výkon)
+- name / item_name (kompatibilita)
+- quantity
+- unit
+- unit_price
+- vat_rate
+- total_price
+- created_at
+```
+
+**codebook_repair_types** - Číselník prací
+```sql
+- id (PK)
+- name (název práce)
+- price (hodinová sazba)
+- active (aktivní ano/ne)
+```
+
+---
+
+## ⚙️ KONFIGURACE (config.py)
+
+```python
+# Typy zakázek
+ORDER_TYPES = ["Zakázka", "Volný prodej", "Nabídka", "Garance", "Reklamace"]
+
+# Stavy zakázek
+ORDER_STATUSES = ["V přípravě", "Otevřená", "Rozpracovaná", "Čeká na díly", "Hotová", "Archiv"]
+
+# Barvy stavů
+ORDER_STATUS_COLORS = {
+    "V přípravě": "#95a5a6",      # šedá
+    "Otevřená": "#3498db",         # modrá
+    "Rozpracovaná": "#f39c12",     # oranžová
+    "Čeká na díly": "#e67e22",     # tmavě oranžová
+    "Hotová": "#27ae60",           # zelená
+    "Archiv": "#7f8c8d"            # tmavě šedá
+}
+
+# Barvy aplikace
+COLOR_PRIMARY = "#2c3e50"
+COLOR_SUCCESS = "#27ae60"
+COLOR_DANGER = "#e74c3c"
+COLOR_WARNING = "#f39c12"
+COLOR_SECONDARY = "#3498db"
+```
+
+---
+
+## 🚀 KLÍČOVÉ VLASTNOSTI MODULU
+
+1. **Kompletní workflow zakázky** - od vytvoření po fakturaci
+2. **Inteligentní vyhledávání** - podle SPZ automaticky načte motorku i zákazníka
+3. **Profesionální dokumenty** - zakázkový list, proforma, faktura v PDF
+4. **Flexibilní položky** - materiál ze skladu, práce z číselníku, cizí výkony
+5. **Živé statistiky** - přehledy a analýzy v reálném čase
+6. **Správa DPH** - automatický výpočet, různé sazby
+7. **Barevné stavy** - vizuální rozlišení stavu zakázek
+8. **Proklikávání** - snadná navigace mezi zákazníkem, motorkou a zakázkou
+9. **Historie** - kompletní audit trail změn
+10. **Responzivní UI** - profesionální vzhled, optimalizováno pro produktivitu

@@ -1,0 +1,876 @@
+# 🏍️ MODUL VOZIDLA (MOTORKY) - KOMPLETNÍ STRUKTURA A POPIS
+
+## PŘEHLED MODULU
+Modul vozidel je centrální evidence všech motorek v servisu. Umožňuje kompletní správu motorek, jejich servisní historii, technické údaje a propojení se zákazníky.
+
+---
+
+## 📁 STRUKTURA SOUBORŮ
+
+```
+modules/vehicles/
+├── __init__.py                    # Inicializace modulu
+├── module_vehicles.py             # ⭐ Hlavní seznam vozidel
+├── vehicle_form.py                # Formulář pro vytvoření/editaci
+├── vehicle_detail.py              # Detail vozidla (profesionální)
+├── vehicle_service_history.py     # Servisní historie vozidla
+├── vehicle_documents.py           # Dokumenty vozidla (STK, emise, TP)
+├── vehicle_photos.py              # Fotogalerie vozidla
+├── vehicle_reminders.py           # Připomínky (STK, servis, pojištění)
+├── vehicle_export.py              # Export dat vozidel
+├── vehicle_import.py              # Import vozidel (CSV, Excel)
+├── vehicle_analytics.py           # Statistiky a analýzy
+└── vehicle_widgets.py             # Dialogy a komponenty
+```
+
+---
+
+### **1. `__init__.py`** 📦
+
+**Účel:** Inicializační soubor modulu
+
+**Obsahuje:**
+```python
+"""
+Modul Vozidla - Správa motorek
+"""
+from .module_vehicles import VehiclesModule
+from .vehicle_form import VehicleFormDialog
+from .vehicle_detail import VehicleDetailWindow
+
+__all__ = ['VehiclesModule', 'VehicleFormDialog', 'VehicleDetailWindow']
+```
+
+---
+
+### **2. `module_vehicles.py`** ⭐ HLAVNÍ SOUBOR
+
+**Účel:** Hlavní vstupní bod modulu - seznam všech vozidel
+
+**Obsahuje:**
+
+**Hlavička:**
+- Titulek "🏍️ Vozidla"
+- Tlačítko "+ Nové vozidlo" (zelené)
+- Tlačítko "📥 Import" (modré)
+- Tlačítko "📤 Export" (sekundární)
+
+**Statistiky - rychlý přehled:**
+- Celkem vozidel
+- Aktivních zákazníků
+- Platná STK
+- STK expiruje do 30 dní (varování)
+- Bez přiřazeného zákazníka
+
+**Filtry:**
+- 🔍 Vyhledávání (SPZ, značka, model, VIN, zákazník)
+- Filtr značky (Vše, Honda, Yamaha, Suzuki, Kawasaki, BMW, Harley-Davidson...)
+- Filtr stavu STK (Vše, Platná, Expiruje brzy, Neplatná, Neuvedeno)
+- Filtr zákazníka (Vše, S přiřazeným, Bez zákazníka)
+- Tlačítko 🔄 Reset filtrů
+
+**Tabulka vozidel:**
+- SPZ (registrační značka)
+- Značka (brand)
+- Model
+- Rok výroby
+- Zákazník (jméno + příjmení)
+- Telefon zákazníka
+- Stav km (poslední známý)
+- STK platná do (barevné pozadí: zelená/oranžová/červená)
+- Poslední servis (datum)
+- Poznámka (zkrácená)
+- ID (skrytý sloupec)
+
+**Funkce:**
+- Dvojklik otevře detail vozidla
+- Pravé tlačítko - kontextové menu:
+  - 📖 Otevřít detail
+  - ✏️ Upravit vozidlo
+  - 📋 Kopírovat SPZ
+  - 📋 Kopírovat VIN
+  - 👤 Přejít na zákazníka
+  - 📋 Zobrazit zakázky
+  - 🗓️ Naplánovat servis
+  - 🗑️ Smazat vozidlo
+- Signál `vehicle_selected` pro komunikaci
+- Hromadný export vybraných vozidel
+- Barevné označení podle stavu STK
+
+**Styly:**
+- Alternující barvy řádků
+- Barevné pozadí pro STK:
+  - Zelená: platná více než 30 dní
+  - Oranžová: expiruje do 30 dní
+  - Červená: neplatná/prošlá
+- Tučné písmo pro důležité údaje
+
+---
+
+### **3. `vehicle_form.py`** 📝
+
+**Účel:** Dialog pro vytvoření/editaci vozidla
+
+**Obsahuje:**
+
+**Záložka: Základní údaje**
+- SPZ * (registrační značka, validace formátu, automaticky velká písmena)
+- Značka * (ComboBox s přednastavenými značkami)
+- Model *
+- Rok výroby (SpinBox 1900-2030)
+- Barva (ComboBox: Černá, Bílá, Červená, Modrá, Zelená, Stříbrná, Šedá, Žlutá, Oranžová, Jiná)
+- VIN (17 znaků, validace checksum)
+
+**Záložka: Technické údaje**
+- Typ motoru (jednoválec, dvouválec, čtyřválec, V-twin, boxer...)
+- Obsah motoru (ccm)
+- Výkon (kW)
+- Typ paliva (Benzín, Nafta, Elektro, Hybrid)
+- Převodovka (Manuální, Automatická, DCT, CVT)
+- Pohon (Řetěz, Kardanový hřídel, Řemen)
+- Hmotnost (kg)
+
+**Záložka: Stav vozidla**
+- Stav km (aktuální stav tachometru)
+- STK platná do (DateEdit s kalendářem)
+- Emise platné do (DateEdit)
+- Pojištění do (DateEdit)
+- Stav vozidla (ComboBox: Výborný, Dobrý, Průměrný, Špatný)
+
+**Záložka: Vlastník**
+- Zákazník * (ComboBox s vyhledáváním)
+- Tlačítko "+ Nový zákazník" (inline vytvoření)
+- Info o zákazníkovi (read-only):
+  - Telefon
+  - Email
+  - Adresa
+
+**Záložka: Poznámky**
+- Poznámky k vozidlu (TextEdit)
+- Speciální požadavky
+- Historie poškození
+
+**Tlačítka:**
+- Zrušit
+- Uložit
+- Uložit a otevřít detail (při vytváření)
+
+**Validace:**
+- SPZ je povinná a unikátní
+- VIN má správný formát (17 znaků, kontrolní součet)
+- Zákazník musí být přiřazen
+- Rok výroby v rozumném rozsahu
+
+---
+
+### **4. `vehicle_detail.py`** 📖 PROFESIONÁLNÍ VERZE
+
+**Účel:** Detailní okno vozidla s kompletními informacemi
+
+**Obsahuje:**
+
+**Horní lišta (action bar):**
+- SPZ vozidla (velké, tučné)
+- Značka + Model
+- Badge stavu STK (barevný)
+- Tlačítko "✏️ Upravit"
+- Tlačítko "+ Nová zakázka"
+- Tlačítko "🖨️ Tisk karty"
+- Tlačítko "🗑️ Smazat"
+
+**Levý panel - záložky:**
+
+**🏍️ Záložka: Základní informace**
+
+*Sekce: Identifikace*
+- SPZ
+- VIN
+- Značka
+- Model
+- Rok výroby
+- Barva
+
+*Sekce: Technické údaje*
+- Typ motoru
+- Obsah (ccm)
+- Výkon (kW/HP)
+- Palivo
+- Převodovka
+- Pohon
+- Hmotnost
+
+*Sekce: Stav*
+- Aktuální stav km
+- STK platná do (s varováním)
+- Emise platné do
+- Pojištění do
+- Stav vozidla
+
+*Sekce: Vlastník*
+- Zákazník (odkaz na detail)
+- Telefon (klikací - volání)
+- Email (klikací - odeslat)
+- Adresa
+
+**📋 Záložka: Servisní historie**
+- Widget `VehicleServiceHistoryWidget`
+- Chronologický přehled všech servisů
+- Tabulka:
+  - Datum servisu
+  - Číslo zakázky (odkaz)
+  - Typ servisu
+  - Stav km při servisu
+  - Provedené práce
+  - Cena celkem
+- Filtry: období, typ servisu
+- Tlačítko "📊 Zobrazit statistiky"
+
+**📁 Záložka: Dokumenty**
+- Widget `VehicleDocumentsWidget`
+- Seznam dokumentů:
+  - 📜 Technický průkaz (TP)
+  - 🔧 STK protokol
+  - 💨 Emisní protokol
+  - 📄 Pojistná smlouva
+  - 📋 Kupní smlouva
+  - 📝 Ostatní dokumenty
+- Upload dokumentů (PDF, obrázky)
+- Náhled dokumentu
+- Stažení dokumentu
+
+**📷 Záložka: Fotogalerie**
+- Widget `VehiclePhotosWidget`
+- Mřížka s náhledy fotek
+- Kategorie:
+  - Celkové pohledy
+  - Detaily poškození
+  - Servisní fotky
+  - Dokumentace stavu
+- Upload fotek (drag & drop)
+- Lightbox pro velký náhled
+- Označení hlavní fotky
+
+**🔔 Záložka: Připomínky**
+- Widget `VehicleRemindersWidget`
+- Seznam připomínek:
+  - STK - blíží se expirace
+  - Emise - blíží se expirace
+  - Pojištění - blíží se expirace
+  - Plánovaný servis
+  - Vlastní připomínky
+- Barevné označení priority
+- Automatické notifikace
+
+**📝 Záložka: Poznámky**
+- Poznámky k vozidlu (editovatelné)
+- Speciální požadavky zákazníka
+- Historie poškození/havárií
+- Doporučení pro příští servis
+
+**Pravý panel - rychlé akce:**
+
+*Sekce: Zakázky*
+- Seznam posledních 5 zakázek
+- Tlačítko "Zobrazit všechny"
+- Tlačítko "+ Nová zakázka"
+
+*Sekce: Statistiky*
+- Celkem zakázek
+- Celková útrata
+- Průměrná cena servisu
+- Poslední servis před X dny
+
+*Sekce: Upozornění*
+- ⚠️ STK expiruje za X dní
+- ⚠️ Emise expirují za X dní
+- ⚠️ Pojištění vyprší za X dní
+- ℹ️ Doporučený servis za X km
+
+---
+
+### **5. `vehicle_service_history.py`** 📋
+
+**Účel:** Historie všech servisů vozidla
+
+**Obsahuje:**
+
+**Třída `VehicleServiceHistoryWidget`:**
+
+**Hlavička:**
+- Titulek "📋 Servisní historie"
+- Filtr období (Vše, Poslední rok, Poslední 2 roky)
+- Filtr typu (Vše, Pravidelný servis, Oprava, STK, Havárie)
+- Tlačítko "📊 Statistiky"
+- Tlačítko "📤 Export"
+
+**Tabulka historie:**
+- Datum
+- Číslo zakázky (odkaz)
+- Typ servisu
+- Stav km
+- Popis prací (zkráceně)
+- Použité díly (počet)
+- Cena bez DPH
+- Cena s DPH
+- Mechanik
+
+**Detailní pohled:**
+- Kliknutím na řádek zobrazí detail
+- Kompletní seznam položek
+- Fotodokumentace
+- Poznámky mechanika
+
+**Statistiky:**
+- Průměrná cena servisu
+- Nejčastější opravy
+- Celkové náklady za období
+- Graf nákladů v čase
+
+**Funkce:**
+- `load_history()` - načtení historie z DB
+- `filter_by_period()` - filtrování podle období
+- `export_history()` - export do PDF/Excel
+- `calculate_statistics()` - výpočet statistik
+
+---
+
+### **6. `vehicle_documents.py`** 📁
+
+**Účel:** Správa dokumentů vozidla
+
+**Obsahuje:**
+
+**Třída `VehicleDocumentsWidget`:**
+
+**Kategorie dokumentů:**
+- 📜 Technický průkaz (TP)
+- 🔧 STK protokoly
+- 💨 Emisní protokoly
+- 📄 Pojistné smlouvy
+- 📋 Kupní smlouvy
+- 📝 Servisní kniha
+- 📊 Ostatní dokumenty
+
+**Tabulka dokumentů:**
+- Typ dokumentu
+- Název souboru
+- Datum nahrání
+- Platnost do
+- Velikost
+- Akce (náhled, stažení, smazání)
+
+**Funkce:**
+- `upload_document()` - nahrání dokumentu
+- `preview_document()` - náhled v aplikaci
+- `download_document()` - stažení
+- `delete_document()` - smazání
+- `check_expiration()` - kontrola platnosti
+
+**Podporované formáty:**
+- PDF
+- JPEG, PNG
+- Word (DOC, DOCX)
+- Excel (XLS, XLSX)
+
+**Automatické upozornění:**
+- STK/Emise/Pojištění - před expirací
+
+---
+
+### **7. `vehicle_photos.py`** 📷
+
+**Účel:** Fotogalerie vozidla
+
+**Obsahuje:**
+
+**Třída `VehiclePhotosWidget`:**
+
+**Mřížka fotek:**
+- Thumbnail náhledy (150x150 px)
+- Označení hlavní fotky (hvězdička)
+- Kategorie (odznak)
+- Datum pořízení
+
+**Kategorie:**
+- 🏍️ Celkové pohledy
+- 🔧 Detaily poškození
+- 🛠️ Servisní fotky
+- 📋 Dokumentace stavu
+- 📅 Před/Po servisu
+
+**Funkce:**
+- `add_photo()` - přidání fotky (dialog nebo drag & drop)
+- `remove_photo()` - smazání fotky
+- `set_main_photo()` - nastavení hlavní fotky
+- `open_lightbox()` - velký náhled
+- `export_gallery()` - export galerie
+
+**Lightbox:**
+- Velký náhled fotky
+- Navigace šipkami
+- Informace o fotce (datum, kategorie, poznámka)
+- Stažení plné velikosti
+
+**Metadata:**
+- Datum pořízení
+- Kategorie
+- Poznámka k fotce
+- Pořadí zobrazení
+
+---
+
+### **8. `vehicle_reminders.py`** 🔔
+
+**Účel:** Systém připomínek pro vozidlo
+
+**Obsahuje:**
+
+**Třída `VehicleRemindersWidget`:**
+
+**Typy připomínek:**
+- 🔧 STK - blíží se expirace
+- 💨 Emise - blíží se expirace
+- 📄 Pojištění - blíží se expirace
+- 🛠️ Plánovaný servis (po X km)
+- 🔄 Výměna oleje (po X km)
+- ⚙️ Výměna řetězu/rozvodů
+- 📅 Vlastní připomínka
+
+**Tabulka připomínek:**
+- Typ připomínky
+- Popis
+- Datum/km
+- Zbývá dní/km
+- Priorita (barevné označení)
+- Stav (aktivní/splněno/ignorováno)
+
+**Barevné kódování:**
+- 🔴 Červená: kritické (do 7 dní)
+- 🟠 Oranžová: brzy (do 30 dní)
+- 🟡 Žlutá: plánované (do 90 dní)
+- 🟢 Zelená: v pořádku
+
+**Funkce:**
+- `add_reminder()` - přidání připomínky
+- `mark_completed()` - označení jako splněno
+- `snooze_reminder()` - odložení
+- `delete_reminder()` - smazání
+- `check_automatic()` - automatická kontrola STK/emisí/pojištění
+
+**Notifikace:**
+- Email zákazníkovi
+- SMS upozornění (volitelně)
+- Push notifikace v aplikaci
+- Export do kalendáře
+
+---
+
+### **9. `vehicle_export.py`** 📤
+
+**Účel:** Export dat vozidel
+
+**Obsahuje:**
+
+**Třída `VehicleExporter`:**
+
+**Typy exportů:**
+- 📄 Karta vozidla (PDF)
+- 📋 Servisní kniha (PDF)
+- 📊 Seznam vozidel (Excel)
+- 📁 Kompletní export (ZIP)
+
+**`export_vehicle_card()`:**
+- Profesionální PDF karta vozidla
+- Základní údaje
+- Technické specifikace
+- Fotka vozidla
+- QR kód s VIN
+- Kontakt na servis
+
+**`export_service_book()`:**
+- PDF servisní kniha
+- Chronologický přehled servisů
+- Provedené práce
+- Použité díly
+- Doporučení
+
+**`export_vehicle_list()`:**
+- Excel s více listy:
+  - Seznam vozidel
+  - Technické údaje
+  - Stav STK/emisí
+  - Zákazníci
+
+**`export_complete()`:**
+- ZIP archiv obsahující:
+  - Karta vozidla (PDF)
+  - Servisní historie (PDF)
+  - Dokumenty
+  - Fotogalerie
+  - Data (JSON)
+
+---
+
+### **10. `vehicle_import.py`** 📥
+
+**Účel:** Import vozidel z externích zdrojů
+
+**Obsahuje:**
+
+**Třída `VehicleImporter`:**
+
+**Podporované formáty:**
+- CSV (oddělené čárkou/středníkem)
+- Excel (XLS, XLSX)
+- JSON
+
+**Dialog importu:**
+1. Výběr souboru
+2. Náhled dat (prvních 10 řádků)
+3. Mapování sloupců:
+   - SPZ → license_plate
+   - Značka → brand
+   - Model → model
+   - Rok → year
+   - VIN → vin
+   - Zákazník → customer_id (vyhledání/vytvoření)
+4. Validace dat
+5. Import s progress barem
+6. Souhrn (importováno/chyby/přeskočeno)
+
+**Funkce:**
+- `preview_file()` - náhled dat
+- `map_columns()` - mapování sloupců
+- `validate_data()` - validace (SPZ, VIN, rok)
+- `import_vehicles()` - samotný import
+- `create_report()` - report importu
+
+**Chování při konfliktech:**
+- Přeskočit existující
+- Aktualizovat existující
+- Vytvořit duplikát
+
+---
+
+### **11. `vehicle_analytics.py`** 📊
+
+**Účel:** Statistiky a analýzy vozidel
+
+**Obsahuje:**
+
+**Filtry:**
+- Období (Tento měsíc, Tento rok, Vše)
+- Značka (Vše, Honda, Yamaha...)
+- Rok výroby (rozsah)
+
+**Statistické boxy:**
+- 🏍️ Celkem vozidel
+- ✅ Platná STK
+- ⚠️ STK expiruje brzy
+- ❌ Neplatná STK
+- 💰 Průměrná útrata/vozidlo
+- 🔧 Průměrný počet servisů
+
+**Grafy a přehledy:**
+
+*Podle značky:*
+- Koláčový graf značek
+- Tabulka: Značka, Počet, Procento, Celková útrata
+
+*Podle roku výroby:*
+- Sloupcový graf
+- Rozložení stáří vozidel
+
+*Podle typu servisu:*
+- Nejčastější opravy
+- Sezónní trendy
+
+*Finanční přehledy:*
+- Top 10 vozidel podle útraty
+- Průměrná cena servisu podle značky
+- Trend nákladů v čase
+
+**Export:**
+- PDF report
+- Excel s grafy
+
+---
+
+### **12. `vehicle_widgets.py`** 🧩
+
+**Účel:** Pomocné dialogy a komponenty
+
+**Obsahuje:**
+
+**`VehicleDialog`:**
+- Jednoduchý dialog pro rychlou editaci
+- Používaný z jiných modulů (zakázky)
+- Základní údaje + zákazník
+- Rychlé uložení
+
+**`VehicleSearchDialog`:**
+- Vyhledávání vozidla
+- Filtrování podle SPZ, VIN, zákazníka
+- Výběr ze seznamu
+- Náhled základních údajů
+
+**`VehicleQuickAddDialog`:**
+- Rychlé přidání vozidla
+- Minimální údaje (SPZ, značka, model, zákazník)
+- Pro inline vytvoření z jiných modulů
+
+**`STKReminderWidget`:**
+- Widget pro zobrazení stavu STK
+- Barevný indikátor
+- Zbývající dny
+- Tlačítko "Naplánovat STK"
+
+**`VehicleCard`:**
+- Karta vozidla pro náhledy
+- Fotka (pokud existuje)
+- SPZ, značka, model
+- Zákazník
+- Stav STK badge
+
+**`VehicleSelector`:**
+- ComboBox s vyhledáváním
+- Autocomplete podle SPZ/značky/modelu
+- Náhled vybraného vozidla
+
+**`MileageUpdateDialog`:**
+- Dialog pro aktualizaci stavu km
+- Poslední známý stav
+- Nový stav (validace - musí být větší)
+- Datum aktualizace
+- Poznámka
+
+---
+
+## 🎨 VIZUALIZACE STRUKTURY
+
+```
+🏍️ MODUL VOZIDLA
+│
+├─ 📋 Seznam vozidel (module_vehicles)
+│  ├─ 🔍 Vyhledávání a filtry
+│  ├─ 📊 Statistiky (celkem, STK, zákazníci)
+│  ├─ 📑 Tabulka vozidel
+│  ├─ ➕ Nové vozidlo / Import / Export
+│  └─ 🖱️ Kontextové menu
+│
+├─ 📝 Formulář vozidla (vehicle_form)
+│  ├─ 🏍️ Základní údaje (SPZ, značka, model, VIN)
+│  ├─ ⚙️ Technické údaje (motor, výkon, palivo)
+│  ├─ 📊 Stav (km, STK, emise, pojištění)
+│  ├─ 👤 Vlastník (zákazník)
+│  └─ 📝 Poznámky
+│
+├─ 📖 Detail vozidla (vehicle_detail)
+│  ├─ 🏍️ Základní informace
+│  │  ├─ 🔖 Identifikace (SPZ, VIN)
+│  │  ├─ ⚙️ Technické údaje
+│  │  ├─ 📊 Stav vozidla
+│  │  └─ 👤 Vlastník (proklik)
+│  │
+│  ├─ 📋 Servisní historie
+│  │  ├─ 📅 Chronologický přehled
+│  │  ├─ 🔧 Provedené práce
+│  │  └─ 💰 Náklady
+│  │
+│  ├─ 📁 Dokumenty
+│  │  ├─ 📜 TP, STK, Emise
+│  │  ├─ 📄 Pojistky
+│  │  └─ 📤 Upload/Download
+│  │
+│  ├─ 📷 Fotogalerie
+│  │  ├─ 🖼️ Náhledy
+│  │  ├─ 📂 Kategorie
+│  │  └─ 🔍 Lightbox
+│  │
+│  ├─ 🔔 Připomínky
+│  │  ├─ 🔧 STK/Emise/Pojištění
+│  │  ├─ 🛠️ Plánované servisy
+│  │  └─ 📧 Notifikace
+│  │
+│  └─ 📝 Poznámky
+│     └─ ✏️ Editovatelné poznámky
+│
+├─ 📤 Export (vehicle_export)
+│  ├─ 📄 Karta vozidla (PDF)
+│  ├─ 📋 Servisní kniha (PDF)
+│  ├─ 📊 Seznam vozidel (Excel)
+│  └─ 📁 Kompletní export (ZIP)
+│
+├─ 📥 Import (vehicle_import)
+│  ├─ 📄 CSV import
+│  ├─ 📊 Excel import
+│  ├─ 🔄 Mapování sloupců
+│  └─ ✅ Validace dat
+│
+├─ 📊 Analytiky (vehicle_analytics)
+│  ├─ 📈 Statistické boxy
+│  ├─ 🥧 Grafy (značky, roky)
+│  ├─ 💰 Finanční přehledy
+│  └─ 📤 Export reportů
+│
+└─ 🧩 Pomocné widgety (vehicle_widgets)
+   ├─ 🔍 Vyhledávací dialog
+   ├─ ➕ Quick add dialog
+   ├─ 🔔 STK reminder widget
+   ├─ 🏍️ Vehicle card
+   └─ 📍 Mileage update dialog
+```
+
+---
+
+## 🔗 VAZBY NA OSTATNÍ MODULY
+
+**Závisí na:**
+- `config` - barvy, VEHICLE_BRANDS, FUEL_TYPES, VEHICLE_COLORS
+- `database_manager` - přístup k databázi (db)
+- `module_customers` - CustomerDialog, CustomerSelector
+
+**Používá ho:**
+- `module_orders` - výběr vozidla pro zakázku
+- `module_customers` - seznam vozidel zákazníka
+
+**Databázové tabulky:**
+- `vehicles` - hlavní tabulka vozidel
+- `customers` - vlastníci vozidel
+- `orders` - zakázky (pro historii)
+- `order_items` - položky zakázek
+- `vehicle_documents` - dokumenty vozidel
+- `vehicle_photos` - fotky vozidel
+- `vehicle_reminders` - připomínky
+
+**Signály:**
+- `vehicle_selected` - výběr vozidla
+- `vehicle_updated` - změna vozidla
+- `vehicle_created` - nové vozidlo
+- `reminder_triggered` - aktivace připomínky
+
+---
+
+## 💾 DATABÁZOVÁ STRUKTURA
+
+```sql
+CREATE TABLE vehicles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER,
+    license_plate TEXT UNIQUE NOT NULL,
+    brand TEXT NOT NULL,
+    model TEXT NOT NULL,
+    year INTEGER,
+    color TEXT,
+    vin TEXT,
+    engine_type TEXT,
+    engine_capacity INTEGER,
+    power_kw REAL,
+    fuel_type TEXT,
+    transmission TEXT,
+    drive_type TEXT,
+    weight REAL,
+    mileage INTEGER,
+    stk_valid_until DATE,
+    emissions_valid_until DATE,
+    insurance_valid_until DATE,
+    vehicle_condition TEXT,
+    notes TEXT,
+    main_photo_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+CREATE TABLE vehicle_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL,
+    document_type TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER,
+    valid_until DATE,
+    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id)
+);
+
+CREATE TABLE vehicle_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL,
+    file_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    category TEXT,
+    is_main BOOLEAN DEFAULT 0,
+    taken_at DATETIME,
+    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    sort_order INTEGER DEFAULT 0,
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id)
+);
+
+CREATE TABLE vehicle_reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_id INTEGER NOT NULL,
+    reminder_type TEXT NOT NULL,
+    description TEXT,
+    due_date DATE,
+    due_mileage INTEGER,
+    priority TEXT DEFAULT 'normal',
+    status TEXT DEFAULT 'active',
+    notified BOOLEAN DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    FOREIGN KEY (vehicle_id) REFERENCES vehicles(id)
+);
+```
+
+---
+
+## 💡 KLÍČOVÉ FUNKCE
+
+1. **Unikátní SPZ** - validace a automatické velké písmeny
+2. **Validace VIN** - kontrola formátu a checksum
+3. **Automatické propojení se zákazníkem** - vlastník vozidla
+4. **Servisní historie** - kompletní přehled všech servisů
+5. **Správa dokumentů** - STK, emise, pojištění, TP
+6. **Fotogalerie** - dokumentace stavu vozidla
+7. **Systém připomínek** - automatické upozornění na STK/emise/pojištění
+8. **Export karty vozidla** - profesionální PDF
+9. **Import vozidel** - hromadné přidání z CSV/Excel
+10. **Analytiky** - statistiky podle značek, stáří, nákladů
+11. **Barevné kódování STK** - okamžitý přehled o stavu
+12. **Proklik na zákazníka** - rychlá navigace
+13. **Proklik na zakázky** - zobrazení historie servisu
+14. **Aktualizace stavu km** - sledování nájezdu
+
+---
+
+## 🎯 PRODUKČNÍ POŽADAVKY
+
+1. **Výkon:**
+   - Lazy loading pro velké seznamy
+   - Caching náhledů fotek
+   - Indexování v DB (SPZ, VIN, customer_id)
+
+2. **Bezpečnost:**
+   - Validace všech vstupů
+   - SQL injection ochrana (parametrizované dotazy)
+   - Bezpečné ukládání souborů
+
+3. **UX:**
+   - Responzivní design
+   - Klávesové zkratky
+   - Drag & drop pro fotky/dokumenty
+   - Autocomplete pro vyhledávání
+
+4. **Integrace:**
+   - Export do účetních systémů
+   - Email notifikace
+   - SMS brána (volitelně)
+   - Kalendář (ICS export)
+
+5. **Zálohování:**
+   - Automatické zálohování dokumentů
+   - Export kompletních dat
+   - Obnova ze zálohy

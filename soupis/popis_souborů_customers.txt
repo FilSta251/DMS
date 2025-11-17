@@ -1,0 +1,1140 @@
+# 👥 MODUL ZÁKAZNÍCI - KOMPLETNÍ STRUKTURA A POPIS
+
+## PŘEHLED MODULU
+Modul zákazníků je základní pilíř celého systému Motoservis DMS. Spravuje kompletní databázi zákazníků, jejich kontaktní údaje, fakturační informace, historii zakázek a propojení s vozidly.
+
+---
+
+## 📁 STRUKTURA SOUBORŮ
+
+```
+modules/customers/
+├── __init__.py                    # Inicializace modulu
+├── module_customers.py            # ⭐ Hlavní seznam zákazníků
+├── customer_form.py               # Formulář pro vytvoření/editaci
+├── customer_detail.py             # Detail zákazníka (profesionální)
+├── customer_vehicles.py           # Vozidla zákazníka
+├── customer_orders.py             # Historie zakázek zákazníka
+├── customer_financial.py          # Finanční přehled zákazníka
+├── customer_communication.py      # Historie komunikace (emaily, SMS)
+├── customer_documents.py          # Dokumenty zákazníka (smlouvy, plné moci)
+├── customer_export.py             # Export dat zákazníků
+├── customer_import.py             # Import zákazníků (CSV, Excel)
+├── customer_analytics.py          # Statistiky a analýzy
+├── customer_groups.py             # Správa zákaznických skupin
+└── customer_widgets.py            # Dialogy a komponenty
+```
+
+---
+
+### **1. `__init__.py`** 📦
+
+**Účel:** Inicializační soubor modulu
+
+**Obsahuje:**
+```python
+"""
+Modul Zákazníci - Správa zákazníků
+"""
+from .modulescustomers import CustomersModule
+from .customer_form import CustomerFormDialog
+from .customer_detail import CustomerDetailWindow
+
+__all__ = ['CustomersModule', 'CustomerFormDialog', 'CustomerDetailWindow']
+```
+
+---
+
+### **2. `modules_ustomers.py`** ⭐ HLAVNÍ SOUBOR
+
+**Účel:** Hlavní vstupní bod modulu - seznam všech zákazníků
+
+**Obsahuje:**
+
+**Hlavička:**
+- Titulek "👥 Zákazníci"
+- Tlačítko "+ Nový zákazník" (zelené)
+- Tlačítko "📥 Import" (modré)
+- Tlačítko "📤 Export" (sekundární)
+- Tlačítko "📧 Hromadný email" (volitelné)
+
+**Statistiky - rychlý přehled:**
+- Celkem zákazníků
+- Firemních zákazníků
+- Soukromých osob
+- Aktivních (min. 1 zakázka za rok)
+- VIP zákazníků
+- Dlužníků (neuhrazené faktury)
+
+**Filtry:**
+- 🔍 Vyhledávání (jméno, příjmení, telefon, email, IČO, firma)
+- Filtr typu (Vše, Soukromá osoba, Firma)
+- Filtr skupiny (Vše, Standardní, VIP, Firemní, Pojišťovna)
+- Filtr aktivity (Vše, Aktivní, Neaktivní)
+- Filtr pohledávek (Vše, Bez dluhů, S pohledávkami)
+- Tlačítko 🔄 Reset filtrů
+
+**Tabulka zákazníků:**
+- Jméno a příjmení / Název firmy
+- Telefon (hlavní)
+- Email
+- Město
+- Skupina (badge s barvou)
+- Počet vozidel
+- Počet zakázek
+- Celková útrata
+- Poslední zakázka (datum)
+- Poznámka (zkrácená)
+- ID (skrytý sloupec)
+
+**Funkce:**
+- Dvojklik otevře detail zákazníka
+- Pravé tlačítko - kontextové menu:
+  - 📖 Otevřít detail
+  - ✏️ Upravit zákazníka
+  - 📋 Kopírovat telefon
+  - 📋 Kopírovat email
+  - 🏍️ Zobrazit vozidla
+  - 📋 Zobrazit zakázky
+  - 📧 Odeslat email
+  - 📱 Odeslat SMS
+  - 💰 Finanční přehled
+  - 🗑️ Smazat zákazníka
+- Signál `customer_selected` pro komunikaci
+- Hromadný export vybraných zákazníků
+- Barevné označení podle skupiny
+
+**Styly:**
+- Alternující barvy řádků
+- Barevné badge pro skupiny:
+  - 🟢 Zelená: VIP
+  - 🔵 Modrá: Firemní
+  - 🟡 Žlutá: Pojišťovna
+  - ⚪ Šedá: Standardní
+- Červené pozadí pro dlužníky
+- Tučné písmo pro důležité údaje
+
+---
+
+### **3. `customer_form.py`** 📝
+
+**Účel:** Dialog pro vytvoření/editaci zákazníka
+
+**Obsahuje:**
+
+**Záložka: Základní údaje**
+
+*Sekce: Typ zákazníka*
+- RadioButton: Soukromá osoba / Firma
+- Dynamické zobrazení polí podle typu
+
+*Sekce: Osobní údaje (soukromá osoba)*
+- Oslovení (ComboBox: Pan, Paní, Slečna)
+- Jméno *
+- Příjmení *
+- Datum narození
+- Rodné číslo (volitelně, chráněný údaj)
+
+*Sekce: Firemní údaje (firma)*
+- Název firmy *
+- IČO * (validace, automatické doplnění z ARES)
+- DIČ (validace formátu)
+- Kontaktní osoba
+- Pozice kontaktní osoby
+
+**Záložka: Kontaktní údaje**
+- Telefon * (hlavní, validace formátu)
+- Telefon 2 (záložní)
+- Email * (validace formátu)
+- Email 2 (záložní)
+- Web (URL)
+
+**Záložka: Adresa**
+
+*Sekce: Hlavní adresa*
+- Ulice a číslo popisné *
+- Město *
+- PSČ * (validace formátu)
+- Kraj
+- Země (ComboBox, výchozí: Česká republika)
+
+*Sekce: Fakturační adresa*
+- Checkbox "Stejná jako hlavní adresa"
+- Pokud jiná:
+  - Ulice a číslo
+  - Město
+  - PSČ
+  - Země
+
+**Záložka: Fakturační údaje**
+- IČO (automaticky z firemních údajů)
+- DIČ
+- Číslo účtu (IBAN validace)
+- Banka
+- Splatnost faktur (dny, výchozí z nastavení)
+- Platební metoda (ComboBox: Převod, Hotovost, Karta)
+- Kredit limit (Kč)
+
+**Záložka: Zákaznická skupina**
+- Skupina * (ComboBox: Standardní, VIP, Firemní, Pojišťovna)
+- Sleva na práci (%)
+- Sleva na materiál (%)
+- Priorita (1-5)
+- VIP zákazník (checkbox)
+
+**Záložka: Poznámky a preference**
+- Poznámky k zákazníkovi (TextEdit)
+- Speciální požadavky
+- Preferovaný způsob komunikace (Email, Telefon, SMS)
+- Souhlas s marketingem (checkbox)
+- GDPR souhlas (checkbox, povinný)
+
+**Tlačítka:**
+- Zrušit
+- Uložit
+- Uložit a otevřít detail
+
+**Validace:**
+- Jméno/Příjmení nebo Název firmy povinný
+- Email validní formát
+- Telefon validní formát
+- IČO 8 číslic
+- DIČ formát CZxxxxxxxx
+- PSČ 5 číslic
+
+**Speciální funkce:**
+- `load_from_ares()` - automatické načtení údajů firmy z ARES podle IČO
+- `validate_ico()` - validace IČO
+- `validate_dic()` - validace DIČ
+- `format_phone()` - formátování telefonu
+
+---
+
+### **4. `customer_detail.py`** 📖 PROFESIONÁLNÍ VERZE
+
+**Účel:** Detailní okno zákazníka s kompletními informacemi
+
+**Obsahuje:**
+
+**Horní lišta (action bar):**
+- Jméno zákazníka (velké, tučné)
+- Badge skupiny (barevný)
+- Badge VIP (pokud je)
+- Tlačítko "✏️ Upravit"
+- Tlačítko "+ Nová zakázka"
+- Tlačítko "📧 Odeslat email"
+- Tlačítko "🖨️ Tisk karty"
+- Tlačítko "🗑️ Smazat"
+
+**Levý panel - záložky:**
+
+**👤 Záložka: Základní informace**
+
+*Sekce: Osobní/Firemní údaje*
+- Jméno a příjmení / Název firmy
+- IČO, DIČ (pro firmy)
+- Kontaktní osoba (pro firmy)
+- Datum narození / Rodné číslo (pro osoby)
+- Zákaznická skupina (badge)
+
+*Sekce: Kontaktní údaje*
+- Telefon (klikací - volání)
+- Telefon 2
+- Email (klikací - odeslat)
+- Email 2
+- Web (klikací - otevřít)
+
+*Sekce: Adresa*
+- Hlavní adresa (formátovaná)
+- Fakturační adresa (pokud jiná)
+- Odkaz na Google Maps
+
+*Sekce: Fakturační údaje*
+- Číslo účtu
+- Banka
+- Splatnost faktur
+- Platební metoda
+- Kredit limit
+
+**🏍️ Záložka: Vozidla**
+- Widget `CustomerVehiclesWidget`
+- Seznam všech vozidel zákazníka
+- Tabulka:
+  - SPZ
+  - Značka + Model
+  - Rok
+  - STK platná do (barevné)
+  - Počet zakázek
+  - Poslední servis
+- Tlačítko "+ Přidat vozidlo"
+- Proklik na detail vozidla
+
+**📋 Záložka: Zakázky**
+- Widget `CustomerOrdersWidget`
+- Historie všech zakázek
+- Tabulka:
+  - Číslo zakázky
+  - Datum
+  - Typ
+  - Vozidlo
+  - Stav
+  - Cena
+- Filtry: období, stav, vozidlo
+- Proklik na detail zakázky
+- Tlačítko "+ Nová zakázka"
+
+**💰 Záložka: Finance**
+- Widget `CustomerFinancialWidget`
+- Přehled financí:
+  - Celková útrata
+  - Průměrná útrata/rok
+  - Počet faktur
+  - Neuhrazené faktury (červeně)
+  - Kredit limit / využití
+- Graf útrat v čase
+- Seznam faktur
+- Tlačítko "📧 Odeslat upomínku"
+
+**📧 Záložka: Komunikace**
+- Widget `CustomerCommunicationWidget`
+- Historie komunikace:
+  - Odeslané emaily
+  - Odeslané SMS
+  - Telefonní hovory (poznámky)
+  - Osobní schůzky
+- Tlačítko "📧 Nový email"
+- Tlačítko "📱 Nová SMS"
+- Tlačítko "📝 Poznámka k hovoru"
+
+**📁 Záložka: Dokumenty**
+- Widget `CustomerDocumentsWidget`
+- Seznam dokumentů:
+  - 📄 Smlouvy
+  - 📋 Plné moci
+  - 🧾 Faktury (kopie)
+  - 📝 Ostatní
+- Upload dokumentů
+- Náhled/stažení
+
+**📝 Záložka: Poznámky**
+- Poznámky k zákazníkovi (editovatelné)
+- Speciální požadavky
+- Historie poznámek (kdo, kdy)
+
+**Pravý panel - rychlé akce:**
+
+*Sekce: Statistiky*
+- Počet vozidel
+- Celkem zakázek
+- Celková útrata
+- Průměrná zakázka
+- Poslední kontakt
+- Zákazníkem od (datum)
+
+*Sekce: Upozornění*
+- ⚠️ Neuhrazené faktury
+- ⚠️ Blížící se STK vozidel
+- ℹ️ Dlouho nekontaktován
+- ℹ️ Narozeniny (pokud vyplněno)
+
+*Sekce: Rychlé akce*
+- 📧 Odeslat email
+- 📱 Zavolat
+- 📋 Nová zakázka
+- 🏍️ Přidat vozidlo
+
+---
+
+### **5. `customer_vehicles.py`** 🏍️
+
+**Účel:** Přehled vozidel zákazníka
+
+**Obsahuje:**
+
+**Třída `CustomerVehiclesWidget`:**
+
+**Hlavička:**
+- Titulek "🏍️ Vozidla zákazníka"
+- Tlačítko "+ Přidat vozidlo"
+- Tlačítko "🔄 Obnovit"
+
+**Tabulka vozidel:**
+- SPZ (odkaz na detail)
+- Značka
+- Model
+- Rok výroby
+- Barva
+- STK platná do (barevné pozadí)
+- Počet zakázek
+- Poslední servis
+- Celková útrata
+- Akce (detail, upravit, smazat)
+
+**Funkce:**
+- `load_vehicles()` - načtení vozidel
+- `add_vehicle()` - přidání nového vozidla
+- `open_vehicle_detail()` - otevření detailu
+- `create_order_for_vehicle()` - nová zakázka pro vozidlo
+
+**Statistiky:**
+- Celkem vozidel
+- Aktivních (servis v posledním roce)
+- Platná STK
+- Neplatná STK
+
+---
+
+### **6. `customer_orders.py`** 📋
+
+**Účel:** Historie zakázek zákazníka
+
+**Obsahuje:**
+
+**Třída `CustomerOrdersWidget`:**
+
+**Hlavička:**
+- Titulek "📋 Historie zakázek"
+- Filtr období (Vše, Tento rok, Poslední 2 roky)
+- Filtr stavu (Vše, Aktivní, Dokončené, Archiv)
+- Filtr vozidla (Vše, konkrétní vozidlo)
+- Tlačítko "+ Nová zakázka"
+- Tlačítko "📤 Export"
+
+**Tabulka zakázek:**
+- Číslo zakázky (odkaz)
+- Datum vytvoření
+- Typ zakázky
+- Vozidlo (SPZ)
+- Stav (barevný badge)
+- Položky (počet)
+- Cena bez DPH
+- Cena s DPH
+- Poznámka
+
+**Souhrn:**
+- Celkem zakázek
+- Celková útrata
+- Průměrná cena zakázky
+- Nejčastější typ opravy
+
+**Funkce:**
+- `load_orders()` - načtení zakázek
+- `filter_orders()` - filtrování
+- `open_order_detail()` - otevření detailu
+- `export_history()` - export do PDF/Excel
+- `create_new_order()` - nová zakázka
+
+---
+
+### **7. `customer_financial.py`** 💰
+
+**Účel:** Finanční přehled zákazníka
+
+**Obsahuje:**
+
+**Třída `CustomerFinancialWidget`:**
+
+**Přehledové boxy:**
+- 💰 Celková útrata (lifetime)
+- 📅 Útrata tento rok
+- 📊 Průměrná útrata/rok
+- 🧾 Počet faktur
+- ❌ Neuhrazené faktury (částka)
+- ⚠️ Po splatnosti (částka)
+
+**Graf útrat:**
+- Sloupcový graf útrat v čase (měsíce/roky)
+- Trend linie
+- Srovnání s průměrem
+
+**Tabulka faktur:**
+- Číslo faktury
+- Datum vystavení
+- Datum splatnosti
+- Částka
+- Stav (Zaplaceno/Nezaplaceno/Po splatnosti)
+- Zbývá uhradit
+- Akce (náhled, zaplatit, upomínka)
+
+**Kredit limit:**
+- Nastavený limit
+- Aktuální využití (progress bar)
+- Dostupný kredit
+
+**Funkce:**
+- `load_financial_data()` - načtení dat
+- `calculate_statistics()` - výpočet statistik
+- `mark_as_paid()` - označení jako zaplaceno
+- `send_reminder()` - odeslání upomínky
+- `export_statement()` - export výpisu
+
+**Upomínky:**
+- 1. upomínka (po X dnech)
+- 2. upomínka (po Y dnech)
+- 3. upomínka - předání právníkovi
+
+---
+
+### **8. `customer_communication.py`** 📧
+
+**Účel:** Historie komunikace se zákazníkem
+
+**Obsahuje:**
+
+**Třída `CustomerCommunicationWidget`:**
+
+**Hlavička:**
+- Titulek "📧 Historie komunikace"
+- Filtr typu (Vše, Email, SMS, Telefon, Osobně)
+- Filtr období
+- Tlačítko "📧 Nový email"
+- Tlačítko "📱 Nová SMS"
+- Tlačítko "📝 Poznámka"
+
+**Timeline komunikace:**
+- Chronologický seznam komunikace
+- Ikona typu (📧, 📱, 📞, 👤)
+- Datum a čas
+- Předmět/obsah (zkráceně)
+- Odesílatel/příjemce
+- Stav (odesláno, doručeno, přečteno)
+
+**Detailní pohled:**
+- Kliknutím zobrazí celý obsah
+- Přílohy (pokud jsou)
+- Odpověď (pokud existuje)
+
+**Šablony:**
+- Připomínka STK
+- Potvrzení zakázky
+- Faktura
+- Nabídka servisu
+- Vlastní šablony
+
+**Funkce:**
+- `load_communication()` - načtení historie
+- `send_email()` - odeslání emailu
+- `send_sms()` - odeslání SMS
+- `add_note()` - přidání poznámky
+- `use_template()` - použití šablony
+
+**Integrace:**
+- SMTP pro emaily
+- SMS brána (volitelně)
+- Log všech komunikací
+
+---
+
+### **9. `customer_documents.py`** 📁
+
+**Účel:** Správa dokumentů zákazníka
+
+**Obsahuje:**
+
+**Třída `CustomerDocumentsWidget`:**
+
+**Kategorie dokumentů:**
+- 📄 Rámcové smlouvy
+- 📋 Servisní smlouvy
+- 📝 Plné moci
+- 🧾 Faktury (archiv)
+- 📊 Cenové nabídky
+- 📜 GDPR souhlasy
+- 📁 Ostatní dokumenty
+
+**Tabulka dokumentů:**
+- Typ dokumentu
+- Název souboru
+- Datum nahrání
+- Platnost do (pokud relevantní)
+- Velikost
+- Akce (náhled, stažení, smazání)
+
+**Funkce:**
+- `upload_document()` - nahrání dokumentu
+- `preview_document()` - náhled
+- `download_document()` - stažení
+- `delete_document()` - smazání
+- `generate_contract()` - generování smlouvy ze šablony
+
+**Podporované formáty:**
+- PDF
+- Word (DOC, DOCX)
+- Excel (XLS, XLSX)
+- Obrázky (JPG, PNG)
+
+**Šablony smluv:**
+- Servisní smlouva
+- Rámcová smlouva
+- Plná moc
+- GDPR souhlas
+
+---
+
+### **10. `customer_export.py`** 📤
+
+**Účel:** Export dat zákazníků
+
+**Obsahuje:**
+
+**Třída `CustomerExporter`:**
+
+**Typy exportů:**
+- 📄 Karta zákazníka (PDF)
+- 📋 Seznam zákazníků (Excel)
+- 💰 Finanční výpis (PDF)
+- 📊 Statistiky zákazníků (Excel)
+- 📁 Kompletní export (ZIP)
+
+**`export_customer_card()`:**
+- Profesionální PDF karta
+- Základní údaje
+- Kontaktní informace
+- Seznam vozidel
+- Finanční souhrn
+- QR kód s kontaktem
+
+**`export_customer_list()`:**
+- Excel s více listy:
+  - Seznam zákazníků
+  - Kontaktní údaje
+  - Finanční přehled
+  - Vozidla
+
+**`export_financial_statement()`:**
+- PDF výpis
+- Seznam faktur
+- Uhrazené/neuhrazené
+- Celkový přehled
+
+**`export_for_marketing()`:**
+- Excel pro marketing
+- Emaily pro hromadné rozesílání
+- Segmentace podle skupin
+- GDPR compliance (pouze se souhlasem)
+
+---
+
+### **11. `customer_import.py`** 📥
+
+**Účel:** Import zákazníků z externích zdrojů
+
+**Obsahuje:**
+
+**Třída `CustomerImporter`:**
+
+**Podporované formáty:**
+- CSV (čárka/středník)
+- Excel (XLS, XLSX)
+- vCard (VCF)
+- JSON
+
+**Dialog importu:**
+1. Výběr souboru
+2. Náhled dat (prvních 10 řádků)
+3. Mapování sloupců:
+   - Jméno → first_name
+   - Příjmení → last_name
+   - Firma → company
+   - IČO → ico
+   - Email → email
+   - Telefon → phone
+   - Ulice → street
+   - Město → city
+   - PSČ → postal_code
+4. Nastavení:
+   - Výchozí skupina
+   - Duplikáty (přeskočit/aktualizovat)
+5. Validace dat
+6. Import s progress barem
+7. Souhrn (importováno/chyby/duplikáty)
+
+**Funkce:**
+- `preview_file()` - náhled dat
+- `map_columns()` - mapování sloupců
+- `validate_data()` - validace
+- `check_duplicates()` - kontrola duplikátů (email, telefon, IČO)
+- `import_customers()` - samotný import
+- `create_report()` - report importu
+
+**Detekce duplikátů:**
+- Podle emailu
+- Podle telefonu
+- Podle IČO (firmy)
+- Podle jména + adresy
+
+---
+
+### **12. `customer_analytics.py`** 📊
+
+**Účel:** Statistiky a analýzy zákazníků
+
+**Obsahuje:**
+
+**Filtry:**
+- Období (Tento rok, Poslední 2 roky, Vše)
+- Skupina (Vše, Standardní, VIP...)
+- Typ (Vše, Soukromá osoba, Firma)
+
+**Statistické boxy:**
+- 👥 Celkem zákazníků
+- 🆕 Noví zákazníci (tento měsíc/rok)
+- 💰 Celkový obrat
+- 📊 Průměrná útrata/zákazník
+- 🏆 Top zákazník (podle útraty)
+- 📉 Odcházející zákazníci
+
+**Grafy a přehledy:**
+
+*Podle skupiny:*
+- Koláčový graf skupin
+- Tabulka: Skupina, Počet, Obrat, Průměr
+
+*Podle typu:*
+- Soukromé osoby vs. Firmy
+- Porovnání útrat
+
+*Geografické rozložení:*
+- Podle měst
+- Podle krajů
+- Mapa (volitelně)
+
+*RFM analýza:*
+- Recency (kdy naposledy)
+- Frequency (jak často)
+- Monetary (kolik utratí)
+- Segmentace zákazníků
+
+*Trendy:*
+- Noví zákazníci v čase
+- Churn rate (odchod zákazníků)
+- Customer lifetime value (CLV)
+
+**Top 10 zákazníků:**
+- Podle útraty
+- Podle počtu zakázek
+- Podle počtu vozidel
+
+**Export:**
+- PDF report
+- Excel s analýzami
+
+---
+
+### **13. `customer_groups.py`** 🏷️
+
+**Účel:** Správa zákaznických skupin
+
+**Obsahuje:**
+
+**Třída `CustomerGroupsDialog`:**
+
+**Tabulka skupin:**
+- Název skupiny
+- Kód (STD, VIP, FIRM...)
+- Sleva na práci (%)
+- Sleva na materiál (%)
+- Splatnost (dny)
+- Kredit limit
+- Barva (badge)
+- Počet zákazníků
+- Aktivní
+
+**Funkce:**
+- `add_group()` - přidání skupiny
+- `edit_group()` - úprava skupiny
+- `delete_group()` - smazání (pokud nemá zákazníky)
+- `set_default()` - nastavení výchozí skupiny
+
+**Přednastavené skupiny:**
+- Standardní: 0% sleva, 14 dní splatnost
+- VIP: 10% sleva, 30 dní splatnost
+- Firemní: 15% sleva, 45 dní splatnost
+- Pojišťovna: speciální ceny, 60 dní splatnost
+
+**Automatické přiřazení:**
+- Pravidla pro povýšení (útrata > X Kč → VIP)
+- Pravidla pro degradaci (neaktivní > 1 rok)
+
+---
+
+### **14. `customer_widgets.py`** 🧩
+
+**Účel:** Pomocné dialogy a komponenty
+
+**Obsahuje:**
+
+**`CustomerDialog`:**
+- Jednoduchý dialog pro rychlou editaci
+- Používaný z jiných modulů
+- Základní údaje + kontakt
+- Rychlé uložení
+
+**`CustomerSearchDialog`:**
+- Vyhledávání zákazníka
+- Filtrování podle jména, telefonu, emailu, IČO
+- Výběr ze seznamu
+- Náhled základních údajů
+- Tlačítko "+ Nový zákazník"
+
+**`CustomerQuickAddDialog`:**
+- Rychlé přidání zákazníka
+- Minimální údaje (jméno, příjmení, telefon, email)
+- Pro inline vytvoření z jiných modulů
+
+**`CustomerSelector`:**
+- ComboBox s vyhledáváním
+- Autocomplete podle jména/firmy
+- Náhled vybraného zákazníka
+- Tlačítko pro vytvoření nového
+
+**`CustomerCard`:**
+- Karta zákazníka pro náhledy
+- Jméno/firma
+- Kontaktní údaje
+- Skupina badge
+- Počet vozidel
+- Poslední zakázka
+
+**`CustomerGroupSelector`:**
+- ComboBox pro výběr skupiny
+- Barevné označení
+- Info o slevách
+
+**`EmailComposerDialog`:**
+- Dialog pro psaní emailu
+- Výběr šablony
+- Příjemce (předvyplněno)
+- Předmět
+- Tělo zprávy (WYSIWYG editor)
+- Přílohy
+- Tlačítko Odeslat
+
+**`SMSComposerDialog`:**
+- Dialog pro SMS
+- Telefon (předvyplněno)
+- Zpráva (max 160 znaků)
+- Počítadlo znaků
+- Tlačítko Odeslat
+
+**`AresLookupWidget`:**
+- Widget pro vyhledání v ARES
+- Input pro IČO
+- Tlačítko "Načíst z ARES"
+- Automatické vyplnění údajů
+
+---
+
+## 🎨 VIZUALIZACE STRUKTURY
+
+```
+👥 MODUL ZÁKAZNÍCI
+│
+├─ 📋 Seznam zákazníků (module_customers)
+│  ├─ 🔍 Vyhledávání a filtry
+│  ├─ 📊 Statistiky (celkem, VIP, dlužníci)
+│  ├─ 📑 Tabulka zákazníků
+│  ├─ ➕ Nový zákazník / Import / Export
+│  └─ 🖱️ Kontextové menu
+│
+├─ 📝 Formulář zákazníka (customer_form)
+│  ├─ 👤 Základní údaje (osoba/firma)
+│  ├─ 📞 Kontaktní údaje
+│  ├─ 🏠 Adresa (hlavní/fakturační)
+│  ├─ 💳 Fakturační údaje
+│  ├─ 🏷️ Zákaznická skupina
+│  └─ 📝 Poznámky a preference
+│
+├─ 📖 Detail zákazníka (customer_detail)
+│  ├─ 👤 Základní informace
+│  │  ├─ 📋 Osobní/firemní údaje
+│  │  ├─ 📞 Kontakty
+│  │  ├─ 🏠 Adresa
+│  │  └─ 💳 Fakturační údaje
+│  │
+│  ├─ 🏍️ Vozidla
+│  │  ├─ 📑 Seznam vozidel
+│  │  ├─ ➕ Přidat vozidlo
+│  │  └─ 🔗 Proklik na detail
+│  │
+│  ├─ 📋 Zakázky
+│  │  ├─ 📅 Historie zakázek
+│  │  ├─ 🔍 Filtry
+│  │  └─ ➕ Nová zakázka
+│  │
+│  ├─ 💰 Finance
+│  │  ├─ 📊 Přehled útrat
+│  │  ├─ 🧾 Seznam faktur
+│  │  ├─ ⚠️ Pohledávky
+│  │  └─ 📧 Upomínky
+│  │
+│  ├─ 📧 Komunikace
+│  │  ├─ 📨 Historie emailů
+│  │  ├─ 📱 Historie SMS
+│  │  ├─ 📝 Poznámky z hovorů
+│  │  └─ 📋 Šablony
+│  │
+│  ├─ 📁 Dokumenty
+│  │  ├─ 📄 Smlouvy
+│  │  ├─ 📋 Plné moci
+│  │  └─ 📤 Upload/Download
+│  │
+│  └─ 📝 Poznámky
+│     └─ ✏️ Editovatelné poznámky
+│
+├─ 📤 Export (customer_export)
+│  ├─ 📄 Karta zákazníka (PDF)
+│  ├─ 📋 Seznam zákazníků (Excel)
+│  ├─ 💰 Finanční výpis (PDF)
+│  └─ 📁 Kompletní export (ZIP)
+│
+├─ 📥 Import (customer_import)
+│  ├─ 📄 CSV import
+│  ├─ 📊 Excel import
+│  ├─ 📇 vCard import
+│  ├─ 🔄 Mapování sloupců
+│  └─ ✅ Detekce duplikátů
+│
+├─ 📊 Analytiky (customer_analytics)
+│  ├─ 📈 Statistické boxy
+│  ├─ 🥧 Grafy (skupiny, typy)
+│  ├─ 📍 Geografické rozložení
+│  ├─ 📊 RFM analýza
+│  └─ 📤 Export reportů
+│
+├─ 🏷️ Zákaznické skupiny (customer_groups)
+│  ├─ 📋 Seznam skupin
+│  ├─ ➕ Přidat skupinu
+│  ├─ 💰 Slevy a podmínky
+│  └─ 🔄 Automatické přiřazení
+│
+└─ 🧩 Pomocné widgety (customer_widgets)
+   ├─ 🔍 Vyhledávací dialog
+   ├─ ➕ Quick add dialog
+   ├─ 📇 Customer selector
+   ├─ 📧 Email composer
+   ├─ 📱 SMS composer
+   └─ 🔎 ARES lookup
+```
+
+---
+
+## 🔗 VAZBY NA OSTATNÍ MODULY
+
+**Závisí na:**
+- `config` - barvy, CUSTOMER_GROUPS, PAYMENT_METHODS
+- `database_manager` - přístup k databázi (db)
+
+**Používá ho:**
+- `module_vehicles` - vlastník vozidla
+- `module_orders` - zákazník zakázky
+- `module_administration` - fakturace
+
+**Databázové tabulky:**
+- `customers` - hlavní tabulka zákazníků
+- `vehicles` - vozidla zákazníků
+- `orders` - zakázky zákazníků
+- `invoices` - faktury
+- `customer_documents` - dokumenty
+- `customer_communication` - komunikace
+- `customer_groups` - skupiny
+
+**Signály:**
+- `customer_selected` - výběr zákazníka
+- `customer_updated` - změna zákazníka
+- `customer_created` - nový zákazník
+- `email_sent` - odeslání emailu
+- `sms_sent` - odeslání SMS
+
+---
+
+## 💾 DATABÁZOVÁ STRUKTURA
+
+```sql
+CREATE TABLE customers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_type TEXT DEFAULT 'person', -- person/company
+
+    -- Osobní údaje
+    title TEXT, -- Pan, Paní
+    first_name TEXT,
+    last_name TEXT,
+    birth_date DATE,
+    personal_id TEXT, -- rodné číslo (encrypted)
+
+    -- Firemní údaje
+    company_name TEXT,
+    ico TEXT,
+    dic TEXT,
+    contact_person TEXT,
+    contact_position TEXT,
+
+    -- Kontaktní údaje
+    phone TEXT NOT NULL,
+    phone2 TEXT,
+    email TEXT,
+    email2 TEXT,
+    website TEXT,
+
+    -- Hlavní adresa
+    street TEXT,
+    city TEXT,
+    postal_code TEXT,
+    region TEXT,
+    country TEXT DEFAULT 'CZ',
+
+    -- Fakturační adresa
+    billing_same_as_main BOOLEAN DEFAULT 1,
+    billing_street TEXT,
+    billing_city TEXT,
+    billing_postal_code TEXT,
+    billing_country TEXT,
+
+    -- Fakturační údaje
+    bank_account TEXT,
+    bank_name TEXT,
+    payment_due_days INTEGER DEFAULT 14,
+    payment_method TEXT DEFAULT 'transfer',
+    credit_limit REAL DEFAULT 0,
+
+    -- Zákaznická skupina
+    customer_group_id INTEGER,
+    discount_labor REAL DEFAULT 0,
+    discount_material REAL DEFAULT 0,
+    priority INTEGER DEFAULT 3,
+    is_vip BOOLEAN DEFAULT 0,
+
+    -- Preference
+    preferred_contact TEXT DEFAULT 'email',
+    marketing_consent BOOLEAN DEFAULT 0,
+    gdpr_consent BOOLEAN DEFAULT 0,
+    gdpr_consent_date DATETIME,
+
+    -- Metadata
+    notes TEXT,
+    special_requirements TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER,
+
+    FOREIGN KEY (customer_group_id) REFERENCES customer_groups(id)
+);
+
+CREATE TABLE customer_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    discount_labor REAL DEFAULT 0,
+    discount_material REAL DEFAULT 0,
+    payment_due_days INTEGER DEFAULT 14,
+    credit_limit REAL DEFAULT 0,
+    priority INTEGER DEFAULT 3,
+    color TEXT DEFAULT '#95a5a6',
+    description TEXT,
+    is_default BOOLEAN DEFAULT 0,
+    active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE customer_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    document_type TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER,
+    valid_until DATE,
+    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    uploaded_by INTEGER,
+    notes TEXT,
+    FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+CREATE TABLE customer_communication (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    communication_type TEXT NOT NULL, -- email/sms/phone/meeting
+    direction TEXT NOT NULL, -- inbound/outbound
+    subject TEXT,
+    content TEXT,
+    attachments TEXT, -- JSON array of file paths
+    status TEXT DEFAULT 'sent', -- sent/delivered/read/failed
+    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    sent_by INTEGER,
+    template_id INTEGER,
+    related_order_id INTEGER,
+    notes TEXT,
+    FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+-- Indexy pro rychlé vyhledávání
+CREATE INDEX idx_customers_phone ON customers(phone);
+CREATE INDEX idx_customers_email ON customers(email);
+CREATE INDEX idx_customers_ico ON customers(ico);
+CREATE INDEX idx_customers_name ON customers(first_name, last_name);
+CREATE INDEX idx_customers_company ON customers(company_name);
+CREATE INDEX idx_customers_group ON customers(customer_group_id);
+```
+
+---
+
+## 💡 KLÍČOVÉ FUNKCE
+
+1. **Podpora osob i firem** - dynamické formuláře podle typu
+2. **Validace IČO/DIČ** - kontrola formátu a integrity
+3. **ARES integrace** - automatické načtení údajů firmy
+4. **Zákaznické skupiny** - slevy, splatnosti, priority
+5. **Kompletní adresa** - hlavní + fakturační
+6. **Komunikační centrum** - emaily, SMS, poznámky
+7. **Finanční přehled** - útraty, faktury, pohledávky
+8. **Upomínkový systém** - automatické upomínky
+9. **GDPR compliance** - souhlasy, anonymizace
+10. **RFM analýza** - segmentace zákazníků
+11. **Import/Export** - CSV, Excel, vCard
+12. **Šablony komunikace** - předpřipravené texty
+13. **Vyhledávání v ARES** - IČO lookup
+14. **Kredit limity** - kontrola při zakázce
+15. **Geografické analýzy** - rozložení zákazníků
+
+---
+
+## 🎯 PRODUKČNÍ POŽADAVKY
+
+1. **Výkon:**
+   - Lazy loading pro velké seznamy
+   - Fulltextové vyhledávání (SQLite FTS5)
+   - Indexování klíčových polí
+   - Caching ARES dotazů
+
+2. **Bezpečnost:**
+   - Šifrování citlivých údajů (rodné číslo)
+   - GDPR compliance
+   - Audit log změn
+   - SQL injection ochrana
+   - Validace všech vstupů
+
+3. **GDPR:**
+   - Evidence souhlasů
+   - Právo na výmaz (anonymizace)
+   - Export osobních údajů
+   - Logování přístupů
+
+4. **UX:**
+   - Autocomplete vyhledávání
+   - Klávesové zkratky
+   - Drag & drop pro dokumenty
+   - Responzivní design
+   - Validace v reálném čase
+
+5. **Integrace:**
+   - ARES API
+   - SMTP pro emaily
+   - SMS brána
+   - Export do účetních systémů
+   - Kalendář (připomínky)
+
+6. **Zálohování:**
+   - Automatické zálohování dat
+   - Export kompletních údajů
+   - Verzování dokumentů
+   - Obnova ze zálohy

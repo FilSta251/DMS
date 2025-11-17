@@ -1,0 +1,432 @@
+from .module_users import UsersModule
+__all__ = ['UsersModule']
+```
+
+---
+
+### **2. `module_users.py`** ⭐ HLAVNÍ SOUBOR
+
+**Účel:** Hlavní vstupní bod modulu
+
+**Obsahuje:**
+- Hlavní okno s postranním menu
+- Přepínání mezi sekcemi
+- Horní lišta s rychlými akcemi
+- Statistiky uživatelů
+
+**Sekce:**
+- 👤 **Seznam uživatelů** (přehled všech uživatelů)
+- 🎭 **Správa rolí** (definice rolí a jejich oprávnění)
+- 🔐 **Oprávnění** (matice oprávnění)
+- 📊 **Aktivita** (audit log, historie přihlášení)
+- 👥 **Online uživatelé** (kdo je právě přihlášen - volitelně)
+- ⚙️ **Nastavení modulu** (politika hesel, timeouty)
+
+**NEVYTVÁŘÍ (už existuje):**
+- ❌ Hashování hesel → `utils_auth.py`
+- ❌ Kontrola oprávnění → `utils_permissions.py`
+- ❌ Login dialog → `login_dialog.py`
+
+---
+
+### **3. `users_list.py`** 👤
+
+**Účel:** Seznam a správa uživatelů
+
+**Obsahuje:**
+
+**Tabulka uživatelů:**
+- ID
+- Uživatelské jméno (username)
+- Celé jméno (full_name)
+- Email
+- Role (admin, mechanik, recepční)
+- Aktivní (ano/ne)
+- Poslední přihlášení
+- Vytvořeno
+- Akce (edit, delete, reset hesla)
+
+**Filtry:**
+- Role
+- Stav (aktivní/neaktivní)
+- Fulltextové vyhledávání
+
+**Funkce:**
+- CRUD operace
+- Aktivace/deaktivace uživatele
+- Reset hesla
+- Duplikace uživatele (kopírování oprávnění)
+- Hromadné akce (aktivovat, deaktivovat, smazat)
+
+**Statistiky:**
+- Celkem uživatelů
+- Aktivních
+- Podle rolí
+- Nově vytvořených (tento měsíc)
+
+---
+
+### **4. `user_detail.py`** 📝
+
+**Účel:** Detail a editace uživatele
+
+**Obsahuje:**
+
+**Záložka: Základní údaje**
+- Uživatelské jméno (unique)
+- Celé jméno
+- Email
+- Telefon
+- Role (výběr)
+- Aktivní (checkbox)
+- Poznámka
+
+**Záložka: Bezpečnost**
+- Změna hesla (pro admina)
+- Vynucení změny hesla při dalším přihlášení
+- Dvoufaktorové ověření (volitelně, připraveno)
+- Historie změn hesla
+- Neúspěšné pokusy o přihlášení
+
+**Záložka: Oprávnění**
+- Přehled oprávnění z role
+- Uživatelské výjimky (přidat/odebrat)
+- Matice: modul × akce (view, create, edit, delete, admin)
+- Vizuální indikace (zelená = povoleno, červená = zakázáno)
+
+**Záložka: Aktivita**
+- Historie přihlášení
+- Poslední akce v systému
+- Změny provedené uživatelem
+- IP adresy (volitelně)
+
+**Záložka: Nastavení profilu**
+- Jazyk (CZ)
+- Téma (světlé/tmavé - připraveno)
+- Notifikace (email, systémové)
+- Výchozí modul po přihlášení
+
+**Tlačítka:**
+- 💾 Uložit
+- ❌ Zrušit
+- 🔑 Reset hesla
+- 🗑️ Smazat uživatele
+- 📋 Kopírovat uživatele
+
+---
+
+### **5. `roles_manager.py`** 🎭
+
+**Účel:** Správa rolí a jejich oprávnění
+
+**Obsahuje:**
+
+**Seznam rolí:**
+- ID
+- Název role (admin, mechanik, recepční, sklad, účetní)
+- Popis
+- Počet uživatelů s touto rolí
+- Barva (vizuální rozlišení)
+- Výchozí role (pro nové uživatele)
+
+**Detail role:**
+- Název
+- Popis
+- Oprávnění (matice modulů × akcí)
+- Seznam uživatelů s touto rolí
+
+**Funkce:**
+- CRUD operace na rolích
+- Kopírování role (s oprávněními)
+- Sloučení rolí
+- Hierarchie rolí (volitelně)
+
+**Předefinované role:**
+- **Admin** - plný přístup
+- **Vedoucí servisu** - vše kromě správy uživatelů
+- **Mechanik** - zakázky, vozidla, sklad (view)
+- **Recepční** - zákazníci, zakázky, kalendář
+- **Skladník** - sklad, objednávky
+- **Účetní** - administrativa, reporty
+- **Host** - pouze zobrazení (read-only)
+
+---
+
+### **6. `permissions_matrix.py`** 🔐
+
+**Účel:** Vizuální matice oprávnění
+
+**Obsahuje:**
+
+**Matice:**
+- Řádky = moduly (dashboard, vehicles, customers, orders...)
+- Sloupce = akce (view, create, edit, delete, admin)
+- Buňky = checkboxy (povoleno/zakázáno)
+- Barevné rozlišení
+
+**Pohledy:**
+- Podle role (všechna oprávnění pro roli)
+- Podle uživatele (včetně výjimek)
+- Podle modulu (kdo má přístup)
+- Srovnání rolí (side-by-side)
+
+**Funkce:**
+- Hromadná úprava oprávnění
+- Import/export oprávnění
+- Šablony oprávnění
+- Audit změn oprávnění
+
+**Akce (permissions):**
+- `view` - zobrazení modulu
+- `create` - vytváření záznamů
+- `edit` - editace záznamů
+- `delete` - mazání záznamů
+- `export` - export dat
+- `admin` - administrace modulu
+
+---
+
+### **7. `audit_log.py`** 📊
+
+**Účel:** Historie aktivit a audit trail
+
+**Obsahuje:**
+
+**Typy událostí:**
+- 🔐 Přihlášení (úspěšné/neúspěšné)
+- 🔓 Odhlášení
+- 👤 Vytvoření uživatele
+- ✏️ Editace uživatele
+- 🗑️ Smazání uživatele
+- 🔑 Reset hesla
+- 🎭 Změna role
+- 🔐 Změna oprávnění
+- ⚠️ Neúspěšné pokusy o přihlášení
+
+**Tabulka:**
+- Datum a čas
+- Uživatel (kdo akci provedl)
+- Typ akce
+- Cíl (na koho/co)
+- Detaily (JSON)
+- IP adresa (volitelně)
+
+**Filtry:**
+- Období
+- Typ akce
+- Uživatel
+- Fulltextové vyhledávání
+
+**Funkce:**
+- Export logu (CSV, PDF)
+- Čištění starých záznamů
+- Upozornění na podezřelou aktivitu
+- Statistiky (počet přihlášení, neúspěšné pokusy)
+
+---
+
+### **8. `password_policy.py`** 🔒
+
+**Účel:** Správa politiky hesel
+
+**Obsahuje:**
+
+**Pravidla:**
+- Minimální délka hesla (8 znaků)
+- Vyžadovat velká písmena
+- Vyžadovat čísla
+- Vyžadovat speciální znaky
+- Zakázané vzory (123456, password, admin)
+- Historie hesel (nepoužít posledních X hesel)
+
+**Platnost hesla:**
+- Maximální stáří hesla (90 dní)
+- Upozornění před expirací (14 dní)
+- Vynucení změny po expirace
+
+**Zamykání účtu:**
+- Počet neúspěšných pokusů před zámkem (5)
+- Doba zámku (30 minut)
+- Automatické odemknutí / manuální
+
+**Validace:**
+- Kontrola síly hesla (weak, medium, strong)
+- Visual feedback při zadávání
+- Kontrola vůči databázi uniklých hesel (volitelně)
+
+**Funkce:**
+- Generátor náhodných hesel
+- Test síly hesla
+- Export politiky
+
+---
+
+### **9. `user_profile.py`** 👤⚙️
+
+**Účel:** Profil aktuálně přihlášeného uživatele
+
+**Obsahuje:**
+
+**Osobní údaje:**
+- Celé jméno
+- Email
+- Telefon
+- Avatar/fotka (volitelně)
+
+**Změna hesla:**
+- Aktuální heslo
+- Nové heslo
+- Potvrzení hesla
+- Indikátor síly hesla
+
+**Nastavení:**
+- Jazyk aplikace
+- Téma (světlé/tmavé)
+- Výchozí modul po přihlášení
+- Notifikace (email, systémové)
+- Formát data a času
+
+**Aktivita:**
+- Poslední přihlášení
+- Počet přihlášení
+- Aktivní sezení
+- Historie hesel (bez zobrazení hesel)
+
+**Tlačítka:**
+- 💾 Uložit změny
+- 🔑 Změnit heslo
+- 🚪 Odhlásit se
+
+---
+
+### **10. `users_widgets.py`** 🧩
+
+**Účel:** Dialogy a widgety
+
+**Obsahuje:**
+
+**Dialogy:**
+- `UserDialog` - vytvoření/editace uživatele
+- `ResetPasswordDialog` - reset hesla (admin)
+- `ChangePasswordDialog` - změna vlastního hesla
+- `RoleDialog` - vytvoření/editace role
+- `PermissionDialog` - úprava oprávnění
+- `UserSelectDialog` - výběr uživatele (pro jiné moduly)
+
+**Widgety:**
+- `UserCard` - karta uživatele (mini profil)
+- `RoleBadge` - štítek role (barevný)
+- `PermissionCheckbox` - checkbox oprávnění
+- `PasswordStrengthMeter` - indikátor síly hesla
+- `OnlineIndicator` - indikátor online stavu
+
+**Validátory:**
+- `UsernameValidator` - validace uživatelského jména
+- `PasswordValidator` - validace hesla podle politiky
+- `EmailValidator` - validace emailu
+
+---
+
+### **11. `users_import_export.py`** 📤📥
+
+**Účel:** Import a export uživatelů
+
+**Obsahuje:**
+
+**Export:**
+- Seznam uživatelů do Excel/CSV
+- Export rolí a oprávnění
+- Export audit logu
+- Záloha konfigurace uživatelů
+
+**Import:**
+- Import uživatelů z CSV/Excel
+- Mapování sloupců
+- Validace před importem
+- Hromadné vytvoření účtů
+- Automatické generování hesel
+
+**Formáty:**
+- CSV
+- Excel (.xlsx)
+- JSON (pro zálohu)
+
+---
+
+### **12. `session_manager.py`** 🔄
+
+**Účel:** Správa sezení (sessions) - VOLITELNÉ/PŘIPRAVENO
+
+**Obsahuje:**
+
+**Aktivní sezení:**
+- Seznam přihlášených uživatelů
+- Čas přihlášení
+- Poslední aktivita
+- Automatické odhlášení po nečinnosti
+
+**Funkce:**
+- Vynucené odhlášení uživatele (admin)
+- Timeout sezení (30 min nečinnosti)
+- Jedno sezení na uživatele / více sezení
+- Logování aktivity
+
+**Dashboard:**
+- Počet aktivních uživatelů
+- Průměrná doba sezení
+- Peak hours (kdy je nejvíce přihlášených)
+
+---
+
+## 🎨 VIZUALIZACE STRUKTURY
+```
+👤 MODUL USERS
+│
+├─ 👤 Seznam uživatelů
+│  ├─ 📋 Tabulka uživatelů
+│  ├─ 🔍 Filtry a vyhledávání
+│  ├─ ➕ CRUD operace
+│  └─ 📊 Statistiky
+│
+├─ 📝 Detail uživatele
+│  ├─ 👤 Základní údaje
+│  ├─ 🔐 Bezpečnost (heslo, 2FA)
+│  ├─ 🔑 Oprávnění (z role + výjimky)
+│  ├─ 📊 Aktivita (historie)
+│  └─ ⚙️ Nastavení profilu
+│
+├─ 🎭 Správa rolí
+│  ├─ 📋 Seznam rolí
+│  ├─ ✏️ Editace role
+│  ├─ 🔐 Oprávnění role
+│  └─ 👥 Uživatelé v roli
+│
+├─ 🔐 Matice oprávnění
+│  ├─ 📊 Vizuální matice
+│  ├─ 🎭 Podle role
+│  ├─ 👤 Podle uživatele
+│  └─ 📤 Import/Export
+│
+├─ 📊 Audit log
+│  ├─ 🔐 Historie přihlášení
+│  ├─ ✏️ Změny uživatelů
+│  ├─ 🔑 Změny oprávnění
+│  └─ ⚠️ Bezpečnostní události
+│
+├─ 🔒 Politika hesel
+│  ├─ 📏 Pravidla (délka, znaky)
+│  ├─ ⏰ Platnost hesla
+│  ├─ 🔐 Zamykání účtů
+│  └─ 💪 Síla hesla
+│
+├─ 👤⚙️ Můj profil
+│  ├─ 📝 Osobní údaje
+│  ├─ 🔑 Změna hesla
+│  ├─ ⚙️ Nastavení
+│  └─ 📊 Moje aktivita
+│
+└─ 📤📥 Import/Export
+   ├─ 📥 Import uživatelů
+   ├─ 📤 Export seznamu
+   ├─ 💾 Záloha konfigurace
+   └─ 📊 Export audit logu

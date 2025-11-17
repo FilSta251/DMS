@@ -1,0 +1,351 @@
+"""
+Manažerský modul
+Komplexní analýzy pro management
+"""
+from .module_management import ManagementModule
+
+__all__ = ['ManagementModule']
+```
+**Účel:** Inicializační soubor modulu
+
+---
+
+### **2. `module_management.py`** ⭐ HLAVNÍ SOUBOR
+**Účel:** Hlavní vstupní bod manažerského modulu
+
+**Obsahuje:**
+- Hlavní okno s postranním menu
+- Přepínání mezi jednotlivými záložkami
+- Horní lišta s filtrací období
+- Rychlé metriky v horní části
+- Navigace mezi sekcemi
+
+**Sekce:**
+- 📊 Dashboard (přehled)
+- 📋 Analýza zakázek
+- 👨‍🔧 Výkon mechaniků
+- 📦 Přehled skladu
+- 💰 Finance
+- 📈 Trendy a predikce
+- 🎯 KPI monitoring
+- 📄 Reporty
+
+---
+
+### **3. `management_dashboard.py`** 📊
+**Účel:** Hlavní dashboard s přehledem všech klíčových metrik
+
+**Obsahuje:**
+- **Karty s metrikami:**
+  - Celkový obrat
+  - Počet zakázek
+  - Průměrná hodnota zakázky
+  - Marže %
+  - Odpracované hodiny
+  - Využití mechaniků %
+  - Hodnota skladu
+  - Položky pod minimem
+
+- **Grafy:**
+  - Obrat v čase (poslední 12 měsíců)
+  - Top 5 mechaniků podle výkonu
+  - Rozdělení zakázek podle typu
+  - Trendy prodeje
+
+- **Rychlé akce:**
+  - Zobrazit dnešní zakázky
+  - Kritické položky skladu
+  - Pending úkoly
+
+---
+
+### **4. `management_orders_analysis.py`** 📋
+**Účel:** Detailní analýza zakázek
+
+**Obsahuje:**
+- **Základní statistiky:**
+  - Celkový počet zakázek
+  - Obrat (celkem, průměr, medián)
+  - Marže (celková, průměrná, podle zakázky)
+  - Rychlost dokončení zakázek
+
+- **Analýzy:**
+  - Podle typu zakázky (servis, oprava, revize, prodej)
+  - Podle stavu (dokončené, rozpracované, zrušené)
+  - Podle období (den, týden, měsíc, rok)
+  - Podle zákazníka (top zákazníci)
+  - Podle vozidla (značky, modely)
+
+- **Tabulky:**
+  - Seznam všech zakázek s filtry
+  - Top 10 nejvýnosnějších zakázek
+  - Problémové zakázky (přečasované, nízká marže)
+
+- **Grafy:**
+  - Obrat v čase
+  - Počet zakázek v čase
+  - Průměrná hodnota zakázky
+  - Koláčový graf typů zakázek
+
+---
+
+### **5. `management_mechanic_performance.py`** 👨‍🔧
+**Účel:** Analýza výkonu mechaniků
+
+**Obsahuje:**
+- **Metriky pro každého mechanika:**
+  - Celkem odpracováno hodin
+  - Počet dokončených zakázek
+  - Průměrný čas na zakázku
+  - Efektivita (skutečné vs. plánované hodiny)
+  - Hodnocení zákazníků (pokud je)
+
+- **Tabulky:**
+  - Přehled všech mechaniků s metrikami
+  - Detailní rozpad hodin podle zakázky
+  - Srovnání výkonu mezi mechaniky
+
+- **Grafy:**
+  - Top mechanici podle hodin
+  - Top mechanici podle počtu zakázek
+  - Trendy výkonu v čase
+  - Využití kapacity (% z pracovní doby)
+
+- **Analýzy:**
+  - Efektivita (pomalé vs rychlé zakázky)
+  - Specializace (typy prací)
+  - Produktivita v čase
+
+---
+
+### **6. `management_warehouse_overview.py`** 📦
+**Účel:** Manažerský přehled skladu
+
+**Obsahuje:**
+- **KPI skladu:**
+  - Celková hodnota skladu (nákupní/prodejní)
+  - Průměrná marže skladu
+  - Obratovost skladu
+  - Dead stock hodnota
+  - Položky pod minimem
+
+- **ABC analýza:**
+  - Kategorie A/B/C
+  - Hodnota podle kategorií
+  - Top položky
+
+- **Trendy:**
+  - Vývoj hodnoty skladu
+  - Nejprodávanější položky
+  - Nejpomalejší položky
+
+- **Varování:**
+  - Kritické položky
+  - Překročení min/max stavů
+  - Zastaralý sklad
+
+---
+
+### **7. `management_financial.py`** 💰
+**Účel:** Finanční přehledy a analýzy
+
+**Obsahuje:**
+- **Přehledy:**
+  - Celkové příjmy
+  - Celkové náklady
+  - Zisk (hrubý, čistý)
+  - Marže %
+  - Cash flow
+
+- **Rozdělení příjmů:**
+  - Zakázky (práce)
+  - Materiál (sklad)
+  - Díly
+  - Ostatní
+
+- **Rozdělení nákladů:**
+  - Materiál
+  - Mzdy
+  - Provoz
+  - Ostatní
+
+- **Analýzy:**
+  - Rentabilita podle typu zakázky
+  - Trend příjmů/nákladů
+  - Sezónnost
+  - Predikce příjmů
+
+- **Grafy:**
+  - Příjmy vs náklady v čase
+  - Profit margin
+  - Break-even analysis
+
+---
+
+### **8. `management_trends.py`** 📈
+**Účel:** Trendy, predikce a forecasting
+
+**Obsahuje:**
+- **Časové analýzy:**
+  - Denní/týdenní/měsíční trendy
+  - Sezónnost
+  - Meziroční srovnání (YoY)
+  - Mezičtvrtletní srovnání (QoQ)
+
+- **Predikce:**
+  - Predikce obratu (příští měsíc/kvartál)
+  - Predikce počtu zakázek
+  - Predikce potřeby skladu
+  - Predikce vytížení mechaniků
+
+- **Grafy:**
+  - Trendy s predikcí
+  - Moving averages
+  - Růstové křivky
+  - Sezónní vzorce
+
+---
+
+### **9. `management_kpi.py`** 🎯
+**Účel:** Monitoring klíčových ukazatelů výkonu (KPI)
+
+**Obsahuje:**
+- **Definice KPI:**
+  - Měsíční obrat (cíl vs skutečnost)
+  - Počet zakázek (cíl vs skutečnost)
+  - Průměrná hodnota zakázky
+  - Využití mechaniků (target 80%)
+  - Marže (target >30%)
+  - Spokojenost zákazníků
+
+- **Dashboard KPI:**
+  - Karta pro každý KPI
+  - Progress bary
+  - Barevné indikátory (zelená/žlutá/červená)
+  - Trendy (↑↓)
+
+- **Alerty:**
+  - Upozornění při nesplnění cíle
+  - Predikce nesplnění
+  - Doporučení
+
+---
+
+### **10. `management_reports.py`** 📄
+**Účel:** Generování manažerských reportů
+
+**Obsahuje:**
+- **Typy reportů:**
+  - Měsíční report (executive summary)
+  - Čtvrtletní report
+  - Roční report
+  - Vlastní report (custom date range)
+
+- **Obsah reportu:**
+  - Executive summary
+  - Klíčové metriky
+  - Grafy a vizualizace
+  - Detailní tabulky
+  - Doporučení a závěry
+
+- **Formáty:**
+  - PDF (profesionální vzhled)
+  - Excel (s pivoty)
+  - PowerPoint (prezentace)
+  - Email (automatické zasílání)
+
+---
+
+### **11. `management_export.py`** 📤
+**Účel:** Exporty dat a analýz
+
+**Obsahuje:**
+- **Exporty:**
+  - Excel s více listy (zakázky, sklad, mechanici)
+  - PDF reporty
+  - CSV pro další zpracování
+  - JSON pro API
+
+- **Funkce:**
+  - Export všech dat za období
+  - Export specifické analýzy
+  - Šablony exportů
+  - Automatické exporty (scheduler)
+
+---
+
+### **12. `management_widgets.py`** 🧩
+**Účel:** Společné widgety a komponenty
+
+**Obsahuje:**
+- **Karty metrik:**
+  - `MetricCard` - karta s jednou metrikou
+  - `TrendCard` - karta s trendem (↑↓)
+  - `ProgressCard` - karta s progress barem
+
+- **Grafy:**
+  - `LineChartWidget` - čárový graf
+  - `BarChartWidget` - sloupcový graf
+  - `PieChartWidget` - koláčový graf
+  - `GaugeWidget` - gauge meter
+
+- **Tabulky:**
+  - `AnalyticsTable` - tabulka s metrikami
+  - `RankingTable` - žebříček (top 10)
+
+- **Filtry:**
+  - `DateRangeFilter` - výběr období
+  - `ComparisonFilter` - srovnání období
+
+---
+
+## 🎨 VIZUALIZACE STRUKTURY
+```
+📊 MANAŽERSKÝ MODUL
+│
+├─ 📊 Dashboard (main view)
+│  ├─ 💳 Metrické karty (obrat, zakázky, marže...)
+│  ├─ 📈 Hlavní grafy (trendy)
+│  └─ ⚡ Rychlé akce
+│
+├─ 📋 Analýza zakázek
+│  ├─ 📊 Statistiky
+│  ├─ 📈 Grafy (obrat, počty...)
+│  ├─ 📑 Tabulky (top zakázky)
+│  └─ 🔍 Filtry (typ, stav, období)
+│
+├─ 👨‍🔧 Výkon mechaniků
+│  ├─ 👤 Přehled mechaniků
+│  ├─ ⏱️ Odpracované hodiny
+│  ├─ 📊 Efektivita
+│  └─ 📈 Trendy výkonu
+│
+├─ 📦 Přehled skladu
+│  ├─ 💰 Hodnota skladu
+│  ├─ 📊 ABC analýza
+│  ├─ 🔄 Obratovost
+│  └─ ⚠️ Kritické položky
+│
+├─ 💰 Finance
+│  ├─ 💵 Příjmy/náklady
+│  ├─ 📊 Zisk a marže
+│  ├─ 📈 Cash flow
+│  └─ 🎯 Rentabilita
+│
+├─ 📈 Trendy & Predikce
+│  ├─ 📅 Časové analýzy
+│  ├─ 🔮 Predikce
+│  ├─ 📊 Sezónnost
+│  └─ 📈 YoY/QoQ srovnání
+│
+├─ 🎯 KPI Monitoring
+│  ├─ 🎯 Cíle vs skutečnost
+│  ├─ 📊 Progress tracking
+│  ├─ ⚠️ Alerty
+│  └─ 💡 Doporučení
+│
+└─ 📄 Reporty & Export
+   ├─ 📄 Měsíční/čtvrtletní reporty
+   ├─ 📊 Executive summary
+   ├─ 📤 Exporty (PDF, Excel, CSV)
+   └─ 📧 Automatické zasílání

@@ -1,0 +1,650 @@
+"""
+Modul Kalendář
+Plánování servisních termínů a správa kapacit
+"""
+from .module_calendar import CalendarModule
+
+__all__ = ['CalendarModule']
+```
+
+---
+
+### **2. `module_calendar.py`** ⭐ HLAVNÍ SOUBOR
+
+**Účel:** Hlavní vstupní bod modulu kalendář
+
+**Obsahuje:**
+- Hlavní okno s navigací a filtry
+- Přepínání mezi pohledy (den, týden, měsíc)
+- Horní lišta s rychlými akcemi
+- Filtr mechaniků
+- Filtr typu události
+- Rychlé statistiky dne
+
+**Sekce:**
+- 📅 **Měsíční pohled** (přehled celého měsíce)
+- 📊 **Týdenní pohled** (detailní týden s hodinami)
+- 📋 **Denní pohled** (rozvrh dne po hodinách)
+- 📝 **Seznam událostí** (tabulkový přehled)
+- 👷 **Vytížení mechaniků** (kapacita servisu)
+- ⏰ **Připomínky** (nadcházející události)
+- ⚙️ **Nastavení kalendáře** (pracovní doba, svátky)
+
+**Funkce:**
+- Drag & drop přesun událostí
+- Rychlé vytvoření události
+- Barevné odlišení typů událostí
+- Propojení se zakázkami
+- Export do PDF/Excel
+- Synchronizace (volitelně Google Calendar)
+
+---
+
+### **3. `calendar_month_view.py`** 📅
+
+**Účel:** Měsíční pohled kalendáře
+
+**Obsahuje:**
+
+**Mřížka kalendáře:**
+- 7 sloupců (Po-Ne)
+- 5-6 řádků (týdny)
+- Číslo dne
+- Mini náhledy událostí
+- Barevné tečky podle typu
+
+**Funkce:**
+- Navigace mezi měsíci (← →)
+- Klik na den → přepnutí na denní pohled
+- Double-click → nová událost
+- Hover → tooltip s počtem událostí
+- Zvýraznění dnešního dne
+- Zvýraznění vybraného dne
+- Šedé zobrazení dnů mimo měsíc
+
+**Zobrazení události:**
+- Zkrácený název (max 20 znaků)
+- Čas začátku
+- Barva podle typu
+- Ikona (servis, schůzka, připomínka)
+
+**Filtry:**
+- Mechanik (všichni / konkrétní)
+- Typ události
+- Zakázka / volný termín
+
+**Statistiky měsíce:**
+- Celkem událostí
+- Volné termíny
+- Obsazené dny %
+- Nadcházející události
+
+---
+
+### **4. `calendar_week_view.py`** 📊
+
+**Účel:** Týdenní pohled s hodinovým rozvrhem
+
+**Obsahuje:**
+
+**Mřížka:**
+- 7 sloupců (Po-Ne)
+- Řádky po hodinách (6:00 - 20:00)
+- Události jako bloky
+- Překrývající se události vedle sebe
+
+**Zobrazení události:**
+- Blok s výškou podle délky
+- Název zákazníka/vozidla
+- Čas (od-do)
+- Mechanik (iniciály nebo ikona)
+- Barva podle typu/mechanika
+- Ikony stavu (potvrzeno, čeká, dokončeno)
+
+**Funkce:**
+- Navigace mezi týdny
+- Drag & drop přesun události
+- Resize události (změna délky)
+- Click na prázdný slot → nová událost
+- Zoom (15min / 30min / 1h bloky)
+- Aktuální čas (červená linie)
+
+**Sloupec mechanika:**
+- Volitelně: každý mechanik = 1 sloupec
+- Zobrazení kapacity
+- Barevné odlišení
+
+**Postranní panel:**
+- Mini kalendář měsíce
+- Seznam dnešních událostí
+- Rychlé statistiky týdne
+
+---
+
+### **5. `calendar_day_view.py`** 📋
+
+**Účel:** Detailní denní pohled
+
+**Obsahuje:**
+
+**Časová osa:**
+- Hodiny (6:00 - 20:00)
+- 15/30/60 minutové sloty
+- Události jako bloky
+- Více sloupců pro více mechaniků
+
+**Zobrazení události:**
+- Plný název
+- Zákazník + kontakt
+- Vozidlo (SPZ, model)
+- Typ práce
+- Mechanik
+- Stav (potvrzeno, čeká)
+- Poznámky
+
+**Funkce:**
+- Drag & drop
+- Rychlá editace (double-click)
+- Kopírování události
+- Zrušení / přesunutí
+- Odeslání SMS/email připomínky
+- Tisk denního rozvrhu
+
+**Statistiky dne:**
+- Počet naplánovaných událostí
+- Volné hodiny
+- Vytížení mechaniků
+- Očekávaný příjem
+
+**Rychlé akce:**
+- ➕ Nová událost
+- 📋 Nová zakázka z události
+- 📧 Hromadné připomínky
+- 🖨️ Tisk rozvrhu
+
+---
+
+### **6. `calendar_event_dialog.py`** 📝
+
+**Účel:** Dialog pro vytvoření/editaci události
+
+**Obsahuje:**
+
+**Záložka: Základní údaje**
+- Název události
+- Typ události:
+  - 🔧 Servisní termín
+  - 📞 Schůzka se zákazníkem
+  - 📦 Příjem dílu
+  - 🚗 Předání vozidla
+  - ⏰ Připomínka
+  - 📅 Jiné
+- Datum a čas (od - do)
+- Celodenní událost (checkbox)
+- Opakování (jednorázově, denně, týdně, měsíčně)
+- Priorita (nízká, střední, vysoká)
+- Barva události
+
+**Záložka: Propojení**
+- Zákazník (výběr ze seznamu + quick search)
+- Vozidlo (filtrováno podle zákazníka)
+- Zakázka (existující nebo nová)
+- Mechanik (přiřazení)
+
+**Záložka: Detaily**
+- Popis práce
+- Odhadovaný čas (hodiny)
+- Poznámky
+- Přílohy (dokumenty, fotky)
+
+**Záložka: Notifikace**
+- Připomínka před událostí (15min, 1h, 1den)
+- SMS zákazníkovi (ano/ne)
+- Email zákazníkovi (ano/ne)
+- Interní notifikace mechanikovi
+
+**Tlačítka:**
+- 💾 Uložit
+- ❌ Zrušit
+- 🗑️ Smazat (u editace)
+- 📋 Vytvořit zakázku (z události)
+
+---
+
+### **7. `calendar_events_list.py`** 📑
+
+**Účel:** Tabulkový seznam všech událostí
+
+**Obsahuje:**
+
+**Tabulka:**
+- Datum a čas
+- Název události
+- Typ
+- Zákazník
+- Vozidlo (SPZ)
+- Mechanik
+- Stav (naplánováno, potvrzeno, dokončeno, zrušeno)
+- Akce (edit, delete, duplicate)
+
+**Filtry:**
+- Období (dnes, týden, měsíc, vlastní)
+- Typ události
+- Mechanik
+- Zákazník
+- Stav
+- Fulltextové vyhledávání
+
+**Řazení:**
+- Podle data (vzestupně/sestupně)
+- Podle zákazníka
+- Podle mechanika
+- Podle typu
+
+**Hromadné akce:**
+- Smazat vybrané
+- Změnit stav
+- Přiřadit mechanika
+- Export vybraných
+
+**Statistiky:**
+- Celkem událostí
+- Podle typu (koláčový graf)
+- Podle mechanika
+- Podle stavu
+
+---
+
+### **8. `calendar_mechanic_capacity.py`** 👷
+
+**Účel:** Přehled vytížení mechaniků
+
+**Obsahuje:**
+
+**Tabulka mechaniků:**
+- Jméno mechanika
+- Dnešní vytížení (hodiny/%)
+- Týdenní vytížení
+- Měsíční vytížení
+- Naplánované zakázky
+- Volné sloty
+
+**Graf vytížení:**
+- Sloupcový graf (mechanik vs hodiny)
+- Barevné odlišení (pod/nad kapacitou)
+- Target linie (optimální vytížení 80%)
+
+**Kalendář mechanika:**
+- Výběr konkrétního mechanika
+- Jeho události v čase
+- Volné termíny
+- Dovolená/nemoc
+
+**Plánování kapacity:**
+- Automatické přiřazení mechanika
+- Vyhledání volného termínu
+- Optimalizace rozvrhu
+- Upozornění na přetížení
+
+**Statistiky:**
+- Průměrné vytížení týmu
+- Nejméně vytížený mechanik
+- Nejvíce vytížený mechanik
+- Doporučení pro plánování
+
+---
+
+### **9. `calendar_reminders.py`** ⏰
+
+**Účel:** Správa připomínek a notifikací
+
+**Obsahuje:**
+
+**Seznam připomínek:**
+- Nadcházející události (dnes, zítra, tento týden)
+- Automatické připomínky (STK, pojištění, pravidelný servis)
+- Manuální připomínky
+- Nesplněné připomínky
+
+**Typy připomínek:**
+- 🔔 Servisní termín
+- 📞 Zavolat zákazníkovi
+- 📦 Objednat díl
+- 🚗 Předání vozidla
+- 📋 Dokončit zakázku
+- 💰 Fakturace
+- 📅 STK končí
+- 🛡️ Pojištění končí
+
+**Funkce:**
+- Vytvoření nové připomínky
+- Označení jako splněno
+- Odložení připomínky
+- Automatické generování (z vozidel)
+- Email/SMS notifikace
+- Push notifikace v aplikaci
+
+**Dashboard připomínek:**
+- Dnes (červené - urgentní)
+- Zítra (oranžové)
+- Tento týden (žluté)
+- Později (šedé)
+
+---
+
+### **10. `calendar_recurring.py`** 🔄
+
+**Účel:** Správa opakujících se událostí
+
+**Obsahuje:**
+
+**Pravidla opakování:**
+- Denně (každý den, každý pracovní den)
+- Týdně (konkrétní dny v týdnu)
+- Měsíčně (konkrétní den v měsíci)
+- Ročně (konkrétní datum)
+- Vlastní interval
+
+**Nastavení:**
+- Počet opakování (10x, neomezeně)
+- Datum konce opakování
+- Výjimky (svátky, dovolená)
+
+**Správa:**
+- Seznam opakujících se událostí
+- Editace pravidla
+- Editace jednotlivé instance
+- Smazání série / jednotlivé
+- Generování budoucích instancí
+
+**Příklady použití:**
+- Pravidelný servis zákazníka (každé 3 měsíce)
+- Týdenní schůzka týmu
+- Měsíční inventura
+- Roční STK připomínka
+
+---
+
+### **11. `calendar_availability.py`** 🟢
+
+**Účel:** Správa dostupnosti a pracovní doby
+
+**Obsahuje:**
+
+**Pracovní doba servisu:**
+- Pondělí - Pátek: 8:00 - 17:00
+- Sobota: 8:00 - 12:00
+- Neděle: zavřeno
+- Editovatelné
+
+**Pracovní doba mechaniků:**
+- Individuální rozvrh
+- Směny (ranní, odpolední)
+- Přesčasy
+- Dovolená
+- Nemoc
+
+**Svátky a volné dny:**
+- České státní svátky
+- Firemní dovolená
+- Vlastní dny volna
+
+**Zobrazení v kalendáři:**
+- Šedé pozadí = mimo pracovní dobu
+- Červené = zavřeno
+- Žluté = omezená kapacita
+
+**Funkce:**
+- Import svátků (automaticky)
+- Plánování dovolené
+- Zástup mechanika
+- Výpočet dostupné kapacity
+
+---
+
+### **12. `calendar_booking.py`** 📞
+
+**Účel:** Online rezervační systém (volitelně)
+
+**Obsahuje:**
+
+**Veřejný formulář:**
+- Zákazník vybere:
+  - Typ služby (servis, oprava, STK)
+  - Datum (z dostupných)
+  - Čas (z volných slotů)
+  - Kontaktní údaje
+  - Vozidlo
+  - Popis problému
+
+**Backend:**
+- Generování volných termínů
+- Automatické potvrzení
+- Email zákazníkovi
+- Zápis do kalendáře
+- Vytvoření zakázky
+
+**Správa rezervací:**
+- Seznam online rezervací
+- Schválení / zamítnutí
+- Změna termínu
+- Kontaktování zákazníka
+
+**Nastavení:**
+- Povolené typy služeb
+- Minimální předstih (24h, 48h)
+- Maximální předstih (30 dní)
+- Blokované termíny
+
+---
+
+### **13. `calendar_reports.py`** 📊
+
+**Účel:** Reporty a statistiky kalendáře
+
+**Obsahuje:**
+
+**Typy reportů:**
+- Vytížení servisu (denní/týdenní/měsíční)
+- Produktivita mechaniků
+- Typy událostí (rozdělení)
+- Zrušené termíny (důvody)
+- No-show zákazníci
+
+**Grafy:**
+- Vytížení v čase
+- Porovnání mechaniků
+- Sezónnost (kdy je nejvíce práce)
+- Trend rezervací
+
+**Export:**
+- PDF report s grafy
+- Excel tabulky
+- CSV pro další analýzy
+
+**Metriky:**
+- Průměrný počet zakázek/den
+- Průměrná délka zakázky
+- Využití kapacity %
+- Nejvytíženější den v týdnu
+- Nejvytíženější hodina
+
+---
+
+### **14. `calendar_export.py`** 📤
+
+**Účel:** Export a tisk kalendáře
+
+**Obsahuje:**
+
+**Export formáty:**
+- PDF (týdenní/měsíční rozvrh)
+- Excel (seznam událostí)
+- iCalendar (.ics pro import)
+- CSV (raw data)
+
+**Tisk:**
+- Denní rozvrh (pro mechanika)
+- Týdenní přehled (pro management)
+- Měsíční kalendář (na zeď)
+- Seznam zakázek na den
+
+**Šablony tisku:**
+- Kompaktní (více na stránku)
+- Detailní (všechny informace)
+- Prázdný formulář (pro ruční zápis)
+
+**Sdílení:**
+- Email rozvrhu zákazníkovi
+- Odkaz na online kalendář
+- QR kód pro rezervaci
+
+---
+
+### **15. `calendar_widgets.py`** 🧩
+
+**Účel:** Widgety a komponenty kalendáře
+
+**Obsahuje:**
+
+**Dialogy:**
+- `EventDialog` - vytvoření/editace události
+- `QuickEventDialog` - rychlé přidání
+- `RecurringDialog` - opakující se událost
+- `ReminderDialog` - připomínka
+- `AvailabilityDialog` - pracovní doba
+
+**Widgety:**
+- `MiniCalendar` - malý měsíční kalendář
+- `EventCard` - karta události
+- `TimeSlotPicker` - výběr času
+- `MechanicSelector` - výběr mechanika
+- `EventTypeBadge` - štítek typu
+- `CapacityBar` - progress bar vytížení
+
+**Komponenty:**
+- `DayCell` - buňka dne v mřížce
+- `EventBlock` - blok události v timeline
+- `HourRow` - řádek hodiny
+- `WeekHeader` - hlavička týdne
+
+**Utility:**
+- `ColorPicker` - výběr barvy události
+- `DateRangePicker` - výběr období
+- `TimeRangePicker` - výběr časového rozsahu
+
+---
+
+### **16. `calendar_settings.py`** ⚙️
+
+**Účel:** Nastavení modulu kalendář
+
+**Obsahuje:**
+
+**Sekce: Pracovní doba**
+- Otevírací hodiny servisu
+- Pracovní dny
+- Přestávky
+- Svátky
+
+**Sekce: Výchozí hodnoty**
+- Výchozí délka události (1h, 2h)
+- Výchozí typ události
+- Výchozí mechanik
+- Výchozí připomínka
+
+**Sekce: Zobrazení**
+- První den týdne (pondělí/neděle)
+- Formát času (24h/12h)
+- Barevné schéma
+- Zoom úroveň
+
+**Sekce: Notifikace**
+- Email připomínky (ano/ne)
+- SMS připomínky (ano/ne)
+- Čas před událostí (15min, 1h, 1den)
+- Automatické připomínky STK
+
+**Sekce: Integrace**
+- Google Calendar sync (volitelně)
+- Import svátků
+- Export nastavení
+
+**Sekce: Přístupová práva**
+- Kdo může vytvářet události
+- Kdo může mazat události
+- Kdo vidí všechny mechaniky
+- Kdo může měnit nastavení
+
+---
+
+## 🎨 VIZUALIZACE STRUKTURY
+```
+📅 MODUL KALENDÁŘ
+│
+├─ 📅 Měsíční pohled
+│  ├─ 📆 Mřížka kalendáře
+│  ├─ 🎯 Mini náhledy událostí
+│  ├─ 🔍 Filtry (mechanik, typ)
+│  └─ 📊 Statistiky měsíce
+│
+├─ 📊 Týdenní pohled
+│  ├─ ⏰ Hodinová mřížka
+│  ├─ 📋 Události jako bloky
+│  ├─ 🔄 Drag & drop
+│  └─ 👷 Sloupce mechaniků
+│
+├─ 📋 Denní pohled
+│  ├─ ⏰ Časová osa
+│  ├─ 📝 Detaily událostí
+│  ├─ 🖨️ Tisk rozvrhu
+│  └─ 📊 Statistiky dne
+│
+├─ 📝 Správa událostí
+│  ├─ ➕ Nová událost
+│  ├─ 🔧 Editace
+│  ├─ 🔗 Propojení (zákazník, vozidlo, zakázka)
+│  └─ 🔄 Opakující se události
+│
+├─ 📑 Seznam událostí
+│  ├─ 📋 Tabulkový přehled
+│  ├─ 🔍 Filtry a vyhledávání
+│  ├─ 📤 Export
+│  └─ 🗑️ Hromadné akce
+│
+├─ 👷 Vytížení mechaniků
+│  ├─ 📊 Graf kapacity
+│  ├─ 🟢 Dostupnost
+│  ├─ 📅 Plánování směn
+│  └─ ⚠️ Upozornění na přetížení
+│
+├─ ⏰ Připomínky
+│  ├─ 🔔 Nadcházející události
+│  ├─ 📞 Kontaktovat zákazníka
+│  ├─ 📧 SMS/Email notifikace
+│  └─ ✅ Splněno/Odloženo
+│
+├─ 🟢 Dostupnost
+│  ├─ 🏢 Pracovní doba servisu
+│  ├─ 👤 Rozvrh mechaniků
+│  ├─ 🏖️ Dovolená/nemoc
+│  └─ 🇨🇿 Svátky
+│
+├─ 📊 Reporty
+│  ├─ 📈 Vytížení v čase
+│  ├─ 👷 Produktivita mechaniků
+│  ├─ 📉 Analýzy trendů
+│  └─ 📤 Export PDF/Excel
+│
+├─ 📤 Export & Tisk
+│  ├─ 🖨️ Tisk rozvrhů
+│  ├─ 📄 PDF kalendář
+│  ├─ 📊 Excel export
+│  └─ 📅 iCalendar (.ics)
+│
+└─ ⚙️ Nastavení
+   ├─ ⏰ Pracovní doba
+   ├─ 🎨 Zobrazení
+   ├─ 🔔 Notifikace
+   ├─ 🔗 Integrace
+   └─ 🔐 Přístupová práva

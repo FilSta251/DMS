@@ -1,0 +1,105 @@
+📋 POPIS KAŽDÉHO SOUBORU:
+1. __init__.py
+
+Inicializace modulu
+Export hlavní třídy WarehouseModule
+
+2. module_warehouse.py ⭐ HLAVNÍ
+
+Seznam všech položek na skladě
+Filtry (kategorie, dodavatel, pod minimem)
+Quick search (vyhledávání)
+Tlačítka: Příjem, Výdej, Inventura, Nová položka
+Barevné upozornění na položky pod minimem
+Zobrazení: Kód, Název, Kategorie, Množství, Jednotka, Min. stav, Cena nákupní, Cena prodejní, Marže
+
+3. warehouse_detail.py
+
+Detail položky (editace všech údajů)
+Záložky:
+
+Základní info: Název, kód, EAN, kategorie, dodavatel
+Ceny a marže: Nákupní, prodejní, DPH, marže %
+Skladové údaje: Množství, jednotka, minimum, umístění
+Historie pohybů: Tabulka všech příjmů/výdejů
+Fotky: Přílohy fotek dílu
+Statistiky: Graf prodeje/spotřeby
+
+
+Tlačítka: Příjem, Výdej, Tisk štítku
+
+4. warehouse_movements.py
+
+Správa všech pohybů
+Seznam všech transakcí (příjmy, výdeje, inventury)
+Filtry: Datum, typ pohybu, položka, doklad
+Možnost storno pohybu
+Export pohybů do Excel
+
+5. warehouse_widgets.py
+
+Dialog příjmu na sklad: Položka, množství, cena, dodavatel, doklad
+Dialog výdeje ze skladu: Položka, množství, důvod (zakázka, spotřeba, šrot)
+Dialog inventury: Očekávaný stav vs. skutečný, rozdíl, komentář
+Dialog minimálního stavu: Nastavení upozornění
+Quick add dialog: Rychlé přidání položky
+Dialog hromadné úpravy: Změna cen, kategorií
+
+6. warehouse_categories.py
+
+Správa kategorií položek
+Stromová struktura (kategorie → podkategorie)
+Příklady: Díly motoru, Elektrické díly, Karoserie, Chemie, Oleje
+CRUD operace
+Přiřazení barvy kategorii
+
+7. warehouse_suppliers.py
+
+Správa dodavatelů
+Info: Název, IČO, kontakt, email, platební podmínky
+Seznam položek od dodavatele
+Historie objednávek
+Exporty objednávek
+
+8. warehouse_export.py
+
+Export do PDF: Ceník, inventurní seznam, seznam pod minimem
+Export do Excel: Kompletní sklad, pohyby, ABC analýza
+Tisk štítků: Generování štítků s čárovými kódy
+Cenové etikety: Cenovky pro díly
+
+9. warehouse_import.py
+
+Import položek z CSV/Excel
+Mapování sloupců
+Náhled před importem
+Validace dat
+Update existujících položek
+Hromadný import cen od dodavatele
+
+10. warehouse_analytics.py 📊
+
+ABC analýza: Nejprodávanější položky
+Obratovost: Kolikrát se položka prodala
+Marže analýza: Celková marže, marže po položkách
+Dead stock: Položky bez pohybu > X měsíců
+Predikce: Odhad potřeby nákupu
+Grafy: Prodeje v čase, top 10 položek
+Export pro manažerský modul
+
+11. warehouse_labels.py
+
+Generování QR/čárových kódů
+Různé velikosti štítků (A4, role)
+Náhled před tiskem
+Hromadný tisk štítků
+Integrace s čtečkou čárových kódů
+
+12. warehouse_stock_alert.py
+
+Systém upozornění
+Check položek pod minimem při startu
+Notifikace v hlavním okně
+Email alerts (volitelně)
+Dashboard s kritickými položkami
+Historie upozornění

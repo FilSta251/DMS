@@ -1,0 +1,890 @@
+# -*- coding: utf-8 -*-
+"""
+Modul Číselníky - Způsoby platby (PRODUKČNÍ VERZE)
+"""
+
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                             QLabel, QTableWidget, QTableWidgetItem, QFrame,
+                             QComboBox, QLineEdit, QHeaderView, QMessageBox,
+                             QDialog, QFormLayout, QCheckBox, QFileDialog,
+                             QDoubleSpinBox, QTextEdit, QGroupBox, QRadioButton,
+                             QButtonGroup)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QColor
+from datetime import datetime
+import csv
+import config
+from database_manager import db
+
+
+class PaymentMethodsWidget(QWidget):
+    """Widget pro správu způsobů platby"""
+
+    data_changed = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.load_data()
+
+    def init_ui(self):
+        """Inicializace UI"""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Horní panel s akcemi
+        top_panel = self.create_top_panel()
+        layout.addWidget(top_panel)
+
+        # Filtr
+        filter_panel = self.create_filter_panel()
+        layout.addWidget(filter_panel)
+
+        # Tabulka
+        self.table = QTableWidget()
+        self.table.setColumnCount(8)
+        self.table.setHorizontalHeaderLabels([
+            "ID", "Kód", "Název", "Poplatek", "Typ poplatku", "Výchozí", "Aktivní", "Akce"
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(0, 50)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(1, 80)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(3, 100)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(4, 100)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(5, 80)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(6, 70)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(7, 150)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setVisible(False)
+        self.table.cellDoubleClicked.connect(self.on_double_click)
+        layout.addWidget(self.table)
+
+        # Spodní panel
+        bottom_panel = self.create_bottom_panel()
+        layout.addWidget(bottom_panel)
+
+    def create_top_panel(self):
+        """Vytvoření horního panelu"""
+        frame = QFrame()
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Tlačítka
+        add_btn = QPushButton("➕ Přidat způsob platby")
+        add_btn.clicked.connect(self.add_method)
+        add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {config.COLOR_SUCCESS};
+                color: white;
+                padding: 10px 20px;
+                font-weight: bold;
+                border-radius: 4px;
+            }}
+        """)
+        layout.addWidget(add_btn)
+
+        import_btn = QPushButton("📥 Import CSV")
+        import_btn.clicked.connect(self.import_csv)
+        layout.addWidget(import_btn)
+
+        export_btn = QPushButton("📤 Export CSV")
+        export_btn.clicked.connect(self.export_csv)
+        layout.addWidget(export_btn)
+
+        reset_btn = QPushButton("🔄 Obnovit výchozí")
+        reset_btn.clicked.connect(self.reset_to_default)
+        layout.addWidget(reset_btn)
+
+        layout.addStretch()
+
+        # Vyhledávání
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("🔍 Vyhledat způsob platby...")
+        self.search_input.setFixedWidth(250)
+        self.search_input.textChanged.connect(self.filter_data)
+        layout.addWidget(self.search_input)
+
+        return frame
+
+    def create_filter_panel(self):
+        """Vytvoření panelu filtrů"""
+        frame = QFrame()
+        frame.setStyleSheet("""
+            QFrame {
+                background-color: #ecf0f1;
+                border-radius: 4px;
+                padding: 10px;
+            }
+        """)
+        layout = QHBoxLayout(frame)
+
+        # Filtr aktivní
+        layout.addWidget(QLabel("Stav:"))
+        self.active_filter = QComboBox()
+        self.active_filter.addItem("Všechny", "all")
+        self.active_filter.addItem("✅ Aktivní", "active")
+        self.active_filter.addItem("❌ Neaktivní", "inactive")
+        self.active_filter.currentIndexChanged.connect(self.filter_data)
+        layout.addWidget(self.active_filter)
+
+        layout.addStretch()
+
+        # Řazení
+        layout.addWidget(QLabel("Řadit:"))
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItem("Podle kódu", "code")
+        self.sort_combo.addItem("Podle názvu", "name")
+        self.sort_combo.addItem("Výchozí první", "default")
+        self.sort_combo.addItem("Podle poplatku", "fee")
+        self.sort_combo.currentIndexChanged.connect(self.load_data)
+        layout.addWidget(self.sort_combo)
+
+        return frame
+
+    def create_bottom_panel(self):
+        """Vytvoření spodního panelu"""
+        frame = QFrame()
+        layout = QHBoxLayout(frame)
+
+        self.count_label = QLabel("Celkem: 0 způsobů platby")
+        self.count_label.setStyleSheet("color: #7f8c8d; font-size: 11pt;")
+        layout.addWidget(self.count_label)
+
+        layout.addStretch()
+
+        info_label = QLabel("💡 Dvojklik pro rychlou úpravu")
+        info_label.setStyleSheet("color: #95a5a6; font-size: 10pt;")
+        layout.addWidget(info_label)
+
+        return frame
+
+    # =====================================================
+    # CRUD OPERACE
+    # =====================================================
+
+    def load_data(self):
+        """Načtení dat z databáze"""
+        try:
+            sort_option = self.sort_combo.currentData() if hasattr(self, 'sort_combo') else "code"
+
+            order_by = "code ASC"
+            if sort_option == "name":
+                order_by = "name ASC"
+            elif sort_option == "default":
+                order_by = "is_default DESC, name ASC"
+            elif sort_option == "fee":
+                order_by = "fee_percent DESC, fee_fixed DESC"
+
+            query = f"""
+                SELECT id, code, name, description, fee_percent, fee_fixed, is_default, active
+                FROM codebook_payment_methods
+                ORDER BY {order_by}
+            """
+            methods = db.fetch_all(query)
+
+            self.all_data = methods
+            self.filter_data()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se načíst data:\n{e}")
+
+    def filter_data(self):
+        """Filtrování dat podle kritérií"""
+        if not hasattr(self, 'all_data'):
+            return
+
+        filtered = self.all_data
+
+        # Filtr podle textu
+        search_text = self.search_input.text().lower().strip()
+        if search_text:
+            filtered = [m for m in filtered if
+                       search_text in m["name"].lower() or
+                       search_text in m["code"].lower() or
+                       search_text in (m["description"] or "").lower()]
+
+        # Filtr podle stavu
+        active_filter = self.active_filter.currentData()
+        if active_filter == "active":
+            filtered = [m for m in filtered if m["active"] == 1]
+        elif active_filter == "inactive":
+            filtered = [m for m in filtered if m["active"] == 0]
+
+        self.display_data(filtered)
+
+    def display_data(self, data):
+        """Zobrazení dat v tabulce"""
+        self.table.setRowCount(len(data))
+
+        for row, method in enumerate(data):
+            # ID
+            id_item = QTableWidgetItem(str(method["id"]))
+            id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            id_item.setFlags(id_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 0, id_item)
+
+            # Kód
+            code_item = QTableWidgetItem(method["code"])
+            code_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            code_item.setFlags(code_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            code_font = QFont()
+            code_font.setBold(True)
+            code_item.setFont(code_font)
+            self.table.setItem(row, 1, code_item)
+
+            # Název
+            name_item = QTableWidgetItem(method["name"])
+            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if method["description"]:
+                name_item.setToolTip(method["description"])
+            self.table.setItem(row, 2, name_item)
+
+            # Poplatek
+            if method["fee_percent"] > 0:
+                fee_text = f"{method['fee_percent']:.1f}%"
+                fee_type = "Procento"
+            elif method["fee_fixed"] > 0:
+                fee_text = f"{method['fee_fixed']:,.0f} Kč".replace(",", " ")
+                fee_type = "Fixní"
+            else:
+                fee_text = "Bez poplatku"
+                fee_type = "-"
+
+            fee_item = QTableWidgetItem(fee_text)
+            fee_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            fee_item.setFlags(fee_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if method["fee_percent"] > 0 or method["fee_fixed"] > 0:
+                fee_item.setForeground(QColor("#e74c3c"))
+            else:
+                fee_item.setForeground(QColor("#27ae60"))
+            self.table.setItem(row, 3, fee_item)
+
+            # Typ poplatku
+            fee_type_item = QTableWidgetItem(fee_type)
+            fee_type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            fee_type_item.setFlags(fee_type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 4, fee_type_item)
+
+            # Výchozí
+            default_item = QTableWidgetItem("⭐" if method["is_default"] else "")
+            default_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            default_item.setFlags(default_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 5, default_item)
+
+            # Aktivní
+            active_item = QTableWidgetItem("✅" if method["active"] else "❌")
+            active_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            active_item.setFlags(active_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if not method["active"]:
+                active_item.setForeground(QColor("#e74c3c"))
+            self.table.setItem(row, 6, active_item)
+
+            # Akce
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout(actions_widget)
+            actions_layout.setContentsMargins(5, 2, 5, 2)
+            actions_layout.setSpacing(5)
+
+            edit_btn = QPushButton("✏️")
+            edit_btn.setToolTip("Upravit")
+            edit_btn.setFixedSize(30, 30)
+            edit_btn.clicked.connect(lambda checked, m=method: self.edit_method(m))
+            actions_layout.addWidget(edit_btn)
+
+            if not method["is_default"]:
+                default_btn = QPushButton("⭐")
+                default_btn.setToolTip("Nastavit jako výchozí")
+                default_btn.setFixedSize(30, 30)
+                default_btn.clicked.connect(lambda checked, m=method: self.set_as_default(m))
+                actions_layout.addWidget(default_btn)
+
+            toggle_btn = QPushButton("🔄")
+            toggle_btn.setToolTip("Aktivovat/Deaktivovat")
+            toggle_btn.setFixedSize(30, 30)
+            toggle_btn.clicked.connect(lambda checked, m=method: self.toggle_active(m))
+            actions_layout.addWidget(toggle_btn)
+
+            delete_btn = QPushButton("🗑️")
+            delete_btn.setToolTip("Smazat")
+            delete_btn.setFixedSize(30, 30)
+            delete_btn.clicked.connect(lambda checked, m=method: self.delete_method(m))
+            actions_layout.addWidget(delete_btn)
+
+            self.table.setCellWidget(row, 7, actions_widget)
+
+        self.count_label.setText(f"Celkem: {len(data)} způsobů platby")
+
+    def on_double_click(self, row, column):
+        """Dvojklik na řádek - otevře editaci"""
+        id_item = self.table.item(row, 0)
+        if id_item:
+            method_id = int(id_item.text())
+            for method in self.all_data:
+                if method["id"] == method_id:
+                    self.edit_method(method)
+                    break
+
+    def add_method(self):
+        """Přidání nového způsobu platby"""
+        dialog = PaymentMethodDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.get_data()
+            try:
+                query = """
+                    INSERT INTO codebook_payment_methods
+                    (code, name, description, fee_percent, fee_fixed, is_default, active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """
+                db.execute_query(query, (
+                    data["code"],
+                    data["name"],
+                    data["description"],
+                    data["fee_percent"],
+                    data["fee_fixed"],
+                    data["is_default"],
+                    data["active"]
+                ))
+
+                # Pokud je nastaven jako výchozí, zrušit u ostatních
+                if data["is_default"]:
+                    last_id = db.fetch_one("SELECT last_insert_rowid() as id")["id"]
+                    query = "UPDATE codebook_payment_methods SET is_default = 0 WHERE id != ?"
+                    db.execute_query(query, (last_id,))
+
+                QMessageBox.information(self, "Úspěch", f"Způsob platby '{data['name']}' byl přidán.")
+                self.load_data()
+                self.data_changed.emit()
+
+            except Exception as e:
+                if "UNIQUE constraint failed" in str(e):
+                    QMessageBox.warning(self, "Chyba", f"Kód '{data['code']}' již existuje.")
+                else:
+                    QMessageBox.critical(self, "Chyba", f"Nepodařilo se přidat způsob platby:\n{e}")
+
+    def edit_method(self, method):
+        """Úprava způsobu platby"""
+        dialog = PaymentMethodDialog(self, method)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.get_data()
+            try:
+                query = """
+                    UPDATE codebook_payment_methods
+                    SET code = ?, name = ?, description = ?, fee_percent = ?,
+                        fee_fixed = ?, is_default = ?, active = ?
+                    WHERE id = ?
+                """
+                db.execute_query(query, (
+                    data["code"],
+                    data["name"],
+                    data["description"],
+                    data["fee_percent"],
+                    data["fee_fixed"],
+                    data["is_default"],
+                    data["active"],
+                    method["id"]
+                ))
+
+                # Pokud je nastaven jako výchozí, zrušit u ostatních
+                if data["is_default"]:
+                    query = "UPDATE codebook_payment_methods SET is_default = 0 WHERE id != ?"
+                    db.execute_query(query, (method["id"],))
+
+                QMessageBox.information(self, "Úspěch", "Způsob platby byl upraven.")
+                self.load_data()
+                self.data_changed.emit()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Chyba", f"Nepodařilo se upravit způsob platby:\n{e}")
+
+    def delete_method(self, method):
+        """Smazání způsobu platby"""
+        if method["is_default"]:
+            QMessageBox.warning(self, "Nelze smazat", "Nelze smazat výchozí způsob platby.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Smazat způsob platby",
+            f"Opravdu chcete smazat způsob platby '{method['name']}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                query = "DELETE FROM codebook_payment_methods WHERE id = ?"
+                db.execute_query(query, (method["id"],))
+
+                QMessageBox.information(self, "Úspěch", "Způsob platby byl smazán.")
+                self.load_data()
+                self.data_changed.emit()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Chyba", f"Nepodařilo se smazat způsob platby:\n{e}")
+
+    def toggle_active(self, method):
+        """Přepnutí aktivního stavu"""
+        if method["is_default"] and method["active"]:
+            QMessageBox.warning(self, "Nelze deaktivovat", "Nelze deaktivovat výchozí způsob platby.")
+            return
+
+        try:
+            new_state = 0 if method["active"] else 1
+            query = "UPDATE codebook_payment_methods SET active = ? WHERE id = ?"
+            db.execute_query(query, (new_state, method["id"]))
+
+            self.load_data()
+            self.data_changed.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se změnit stav:\n{e}")
+
+    def set_as_default(self, method):
+        """Nastavení jako výchozí"""
+        try:
+            # Zrušit výchozí u všech
+            db.execute_query("UPDATE codebook_payment_methods SET is_default = 0")
+
+            # Nastavit nový výchozí
+            query = "UPDATE codebook_payment_methods SET is_default = 1, active = 1 WHERE id = ?"
+            db.execute_query(query, (method["id"],))
+
+            QMessageBox.information(self, "Úspěch", f"'{method['name']}' je nyní výchozí způsob platby.")
+            self.load_data()
+            self.data_changed.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se nastavit výchozí:\n{e}")
+
+    # =====================================================
+    # IMPORT / EXPORT
+    # =====================================================
+
+    def import_csv(self):
+        """Import způsobů platby z CSV"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Importovat způsoby platby z CSV",
+            "",
+            "CSV soubory (*.csv)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            imported = 0
+            skipped = 0
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f, delimiter=';')
+
+                for row in reader:
+                    code = dict(row).get("code", "").strip()
+                    name = dict(row).get("name", "").strip()
+                    if not code or not name:
+                        continue
+
+                    # Kontrola existence
+                    check_query = "SELECT id FROM codebook_payment_methods WHERE code = ?"
+                    existing = db.fetch_one(check_query, (code,))
+
+                    if existing:
+                        skipped += 1
+                        continue
+
+                    description = dict(row).get("description", "").strip()
+                    fee_percent = float(dict(row).get("fee_percent", 0))
+                    fee_fixed = float(dict(row).get("fee_fixed", 0))
+                    is_default = int(dict(row).get("is_default", 0))
+                    active = int(dict(row).get("active", 1))
+
+                    query = """
+                        INSERT INTO codebook_payment_methods
+                        (code, name, description, fee_percent, fee_fixed, is_default, active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                    db.execute_query(query, (code, name, description, fee_percent, fee_fixed, is_default, active))
+                    imported += 1
+
+            QMessageBox.information(
+                self,
+                "Import dokončen",
+                f"Importováno: {imported} způsobů platby\nPřeskočeno (duplicity): {skipped}"
+            )
+
+            self.load_data()
+            self.data_changed.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se importovat CSV:\n{e}")
+
+    def export_csv(self):
+        """Export způsobů platby do CSV"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportovat způsoby platby do CSV",
+            f"zpusoby_platby_{datetime.now().strftime('%Y%m%d')}.csv",
+            "CSV soubory (*.csv)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            query = """
+                SELECT code, name, description, fee_percent, fee_fixed, is_default, active
+                FROM codebook_payment_methods
+                ORDER BY code
+            """
+            methods = db.fetch_all(query)
+
+            with open(file_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=["code", "name", "description", "fee_percent", "fee_fixed",
+                               "is_default", "active"],
+                    delimiter=';'
+                )
+                writer.writeheader()
+
+                for method in methods:
+                    writer.writerow({
+                        "code": method["code"],
+                        "name": method["name"],
+                        "description": method["description"] or "",
+                        "fee_percent": method["fee_percent"],
+                        "fee_fixed": method["fee_fixed"],
+                        "is_default": method["is_default"],
+                        "active": method["active"]
+                    })
+
+            QMessageBox.information(
+                self,
+                "Export dokončen",
+                f"Exportováno {len(methods)} způsobů platby do:\n{file_path}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se exportovat CSV:\n{e}")
+
+    def reset_to_default(self):
+        """Obnovení výchozích způsobů platby"""
+        reply = QMessageBox.question(
+            self,
+            "Obnovit výchozí způsoby platby",
+            "Opravdu chcete obnovit výchozí způsoby platby?\n\n"
+            "Budou přidány chybějící způsoby, existující zůstanou.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            default_methods = [
+                ("BANK", "Bankovní převod", "Platba převodem na účet", 0, 0, 1),
+                ("CASH", "Hotovost", "Platba v hotovosti", 0, 0, 0),
+                ("CARD", "Platební karta", "Platba kartou na terminálu", 1.5, 0, 0),
+                ("DOB", "Dobírka", "Platba při doručení", 0, 50, 0),
+                ("FAKTURA", "Faktura", "Faktura se splatností", 0, 0, 0),
+                ("ZALOHA", "Záloha", "Zálohová platba", 0, 0, 0),
+                ("SPLIT", "Kombinovaná platba", "Kombinace více způsobů platby", 0, 0, 0),
+            ]
+
+            added = 0
+            for code, name, desc, fee_pct, fee_fix, is_default in default_methods:
+                check_query = "SELECT id FROM codebook_payment_methods WHERE code = ?"
+                existing = db.fetch_one(check_query, (code,))
+
+                if not existing:
+                    query = """
+                        INSERT INTO codebook_payment_methods
+                        (code, name, description, fee_percent, fee_fixed, is_default, active)
+                        VALUES (?, ?, ?, ?, ?, ?, 1)
+                    """
+                    db.execute_query(query, (code, name, desc, fee_pct, fee_fix, is_default))
+                    added += 1
+
+            QMessageBox.information(
+                self,
+                "Dokončeno",
+                f"Přidáno {added} výchozích způsobů platby."
+            )
+
+            self.load_data()
+            self.data_changed.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Nepodařilo se obnovit výchozí způsoby platby:\n{e}")
+
+    # =====================================================
+    # POMOCNÉ METODY
+    # =====================================================
+
+    def get_count(self):
+        """Vrátí počet položek"""
+        try:
+            query = "SELECT COUNT(*) as count FROM codebook_payment_methods"
+            result = db.fetch_one(query)
+            return result["count"] if result else 0
+        except:
+            return 0
+
+    def export_data(self):
+        """Export dat pro zálohu"""
+        try:
+            query = """
+                SELECT code, name, description, fee_percent, fee_fixed, is_default, active
+                FROM codebook_payment_methods
+            """
+            return db.fetch_all(query)
+        except:
+            return []
+
+    def import_data(self, data):
+        """Import dat ze zálohy"""
+        try:
+            for item in data:
+                check_query = "SELECT id FROM codebook_payment_methods WHERE code = ?"
+                existing = db.fetch_one(check_query, (item["code"],))
+
+                if existing:
+                    query = """
+                        UPDATE codebook_payment_methods
+                        SET name = ?, description = ?, fee_percent = ?, fee_fixed = ?,
+                            is_default = ?, active = ?
+                        WHERE code = ?
+                    """
+                    db.execute_query(query, (
+                        item["name"],
+                        item.get("description", ""),
+                        item["fee_percent"],
+                        item["fee_fixed"],
+                        item["is_default"],
+                        item["active"],
+                        item["code"]
+                    ))
+                else:
+                    query = """
+                        INSERT INTO codebook_payment_methods
+                        (code, name, description, fee_percent, fee_fixed, is_default, active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                    db.execute_query(query, (
+                        item["code"],
+                        item["name"],
+                        item.get("description", ""),
+                        item["fee_percent"],
+                        item["fee_fixed"],
+                        item["is_default"],
+                        item["active"]
+                    ))
+
+            self.load_data()
+
+        except Exception as e:
+            print(f"Chyba při importu dat: {e}")
+
+    def refresh(self):
+        """Obnovení dat"""
+        self.load_data()
+
+
+# =====================================================
+# DIALOG PRO ZPŮSOB PLATBY
+# =====================================================
+
+class PaymentMethodDialog(QDialog):
+    """Dialog pro přidání/úpravu způsobu platby"""
+
+    def __init__(self, parent, method=None):
+        super().__init__(parent)
+        self.method = method
+        self.setWindowTitle("Upravit způsob platby" if method else "Nový způsob platby")
+        self.setMinimumWidth(500)
+        self.init_ui()
+
+        if method:
+            self.load_method_data()
+
+    def init_ui(self):
+        """Inicializace UI"""
+        layout = QFormLayout(self)
+
+        # Kód
+        self.code_input = QLineEdit()
+        self.code_input.setPlaceholderText("Např: BANK, CASH, CARD...")
+        self.code_input.setMaxLength(20)
+        layout.addRow("Kód:", self.code_input)
+
+        # Název
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Např: Bankovní převod, Hotovost...")
+        layout.addRow("Název:", self.name_input)
+
+        # Popis
+        self.description_input = QTextEdit()
+        self.description_input.setMaximumHeight(80)
+        self.description_input.setPlaceholderText("Popis způsobu platby...")
+        layout.addRow("Popis:", self.description_input)
+
+        # Poplatek
+        fee_group = QGroupBox("Poplatek za způsob platby")
+        fee_layout = QVBoxLayout(fee_group)
+
+        # Typ poplatku
+        self.fee_type_group = QButtonGroup(self)
+
+        no_fee_radio = QRadioButton("Bez poplatku")
+        no_fee_radio.setChecked(True)
+        self.fee_type_group.addButton(no_fee_radio, 0)
+        fee_layout.addWidget(no_fee_radio)
+
+        percent_layout = QHBoxLayout()
+        self.percent_radio = QRadioButton("Procento z částky:")
+        self.fee_type_group.addButton(self.percent_radio, 1)
+        percent_layout.addWidget(self.percent_radio)
+
+        self.fee_percent_input = QDoubleSpinBox()
+        self.fee_percent_input.setRange(0, 100)
+        self.fee_percent_input.setDecimals(2)
+        self.fee_percent_input.setSuffix(" %")
+        self.fee_percent_input.setValue(0)
+        self.fee_percent_input.setEnabled(False)
+        percent_layout.addWidget(self.fee_percent_input)
+        percent_layout.addStretch()
+        fee_layout.addLayout(percent_layout)
+
+        fixed_layout = QHBoxLayout()
+        self.fixed_radio = QRadioButton("Fixní částka:")
+        self.fee_type_group.addButton(self.fixed_radio, 2)
+        fixed_layout.addWidget(self.fixed_radio)
+
+        self.fee_fixed_input = QDoubleSpinBox()
+        self.fee_fixed_input.setRange(0, 99999)
+        self.fee_fixed_input.setDecimals(0)
+        self.fee_fixed_input.setSuffix(" Kč")
+        self.fee_fixed_input.setValue(0)
+        self.fee_fixed_input.setEnabled(False)
+        fixed_layout.addWidget(self.fee_fixed_input)
+        fixed_layout.addStretch()
+        fee_layout.addLayout(fixed_layout)
+
+        self.fee_type_group.buttonClicked.connect(self.update_fee_inputs)
+
+        layout.addRow(fee_group)
+
+        # Výchozí
+        self.default_checkbox = QCheckBox("Nastavit jako výchozí způsob platby")
+        layout.addRow("", self.default_checkbox)
+
+        # Aktivní
+        self.active_checkbox = QCheckBox("Aktivní (dostupný pro výběr)")
+        self.active_checkbox.setChecked(True)
+        layout.addRow("", self.active_checkbox)
+
+        # Tlačítka
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+
+        cancel_btn = QPushButton("Zrušit")
+        cancel_btn.clicked.connect(self.reject)
+        buttons_layout.addWidget(cancel_btn)
+
+        if self.method and not self.method["is_default"]:
+            delete_btn = QPushButton("🗑️ Smazat")
+            delete_btn.clicked.connect(self.delete_method)
+            delete_btn.setStyleSheet(f"background-color: {config.COLOR_DANGER}; color: white; padding: 8px 20px;")
+            buttons_layout.addWidget(delete_btn)
+
+        save_btn = QPushButton("💾 Uložit")
+        save_btn.clicked.connect(self.save)
+        save_btn.setStyleSheet(f"background-color: {config.COLOR_SUCCESS}; color: white; padding: 8px 20px;")
+        buttons_layout.addWidget(save_btn)
+
+        layout.addRow(buttons_layout)
+
+    def update_fee_inputs(self):
+        """Aktualizace vstupních polí poplatku"""
+        selected_id = self.fee_type_group.checkedId()
+
+        self.fee_percent_input.setEnabled(selected_id == 1)
+        self.fee_fixed_input.setEnabled(selected_id == 2)
+
+        if selected_id == 0:
+            self.fee_percent_input.setValue(0)
+            self.fee_fixed_input.setValue(0)
+        elif selected_id == 1:
+            self.fee_fixed_input.setValue(0)
+        elif selected_id == 2:
+            self.fee_percent_input.setValue(0)
+
+    def load_method_data(self):
+        """Načtení dat způsobu platby"""
+        self.code_input.setText(self.method["code"])
+        self.name_input.setText(self.method["name"])
+        self.description_input.setPlainText(self.method["description"] or "")
+
+        # Poplatek
+        if self.method["fee_percent"] > 0:
+            self.percent_radio.setChecked(True)
+            self.fee_percent_input.setValue(self.method["fee_percent"])
+            self.fee_percent_input.setEnabled(True)
+        elif self.method["fee_fixed"] > 0:
+            self.fixed_radio.setChecked(True)
+            self.fee_fixed_input.setValue(self.method["fee_fixed"])
+            self.fee_fixed_input.setEnabled(True)
+
+        self.default_checkbox.setChecked(self.method["is_default"] == 1)
+        self.active_checkbox.setChecked(self.method["active"] == 1)
+
+    def delete_method(self):
+        """Smazání způsobu platby z dialogu"""
+        if self.method:
+            self.parent().delete_method(self.method)
+            self.reject()
+
+    def save(self):
+        """Uložení způsobu platby"""
+        code = self.code_input.text().strip()
+        name = self.name_input.text().strip()
+
+        if not code:
+            QMessageBox.warning(self, "Chyba", "Vyplňte kód způsobu platby.")
+            return
+
+        if not name:
+            QMessageBox.warning(self, "Chyba", "Vyplňte název způsobu platby.")
+            return
+
+        self.accept()
+
+    def get_data(self):
+        """Vrácení dat"""
+        fee_percent = 0
+        fee_fixed = 0
+
+        selected_id = self.fee_type_group.checkedId()
+        if selected_id == 1:
+            fee_percent = self.fee_percent_input.value()
+        elif selected_id == 2:
+            fee_fixed = self.fee_fixed_input.value()
+
+        return {
+            "code": self.code_input.text().strip().upper(),
+            "name": self.name_input.text().strip(),
+            "description": self.description_input.toPlainText().strip(),
+            "fee_percent": fee_percent,
+            "fee_fixed": fee_fixed,
+            "is_default": 1 if self.default_checkbox.isChecked() else 0,
+            "active": 1 if self.active_checkbox.isChecked() else 0
+        }

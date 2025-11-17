@@ -1,0 +1,474 @@
+# -*- coding: utf-8 -*-
+"""
+Profil aktuálně přihlášeného uživatele
+"""
+
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout,
+    QLineEdit, QPushButton, QLabel, QFrame, QMessageBox, QTabWidget
+)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont
+from datetime import datetime
+from database_manager import db
+from utils_auth import (
+    get_current_user_id, get_current_username,
+    hash_password, verify_password
+)
+import config
+
+
+class UserProfile(QWidget):
+    """Widget pro profil přihlášeného uživatele"""
+
+    profile_updated = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.user_data = None
+
+        self.init_ui()
+        self.load_profile()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(15)
+
+        top_panel = self.create_top_panel()
+        main_layout.addWidget(top_panel)
+
+        tabs = QTabWidget()
+        tabs.addTab(self.create_profile_tab(), "👤 Osobní údaje")
+        tabs.addTab(self.create_password_tab(), "🔑 Změna hesla")
+        tabs.addTab(self.create_activity_tab(), "📊 Moje aktivita")
+
+        main_layout.addWidget(tabs)
+
+        self.setStyleSheet(f"""
+            QTabWidget::pane {{
+                background-color: white;
+                border: 1px solid #d0d0d0;
+                border-radius: 5px;
+            }}
+            QTabBar::tab {{
+                background-color: #e0e0e0;
+                padding: 10px 20px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: white;
+                border-bottom: 2px solid {config.COLOR_SECONDARY};
+            }}
+            QLineEdit {{
+                padding: 8px;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                background-color: white;
+            }}
+            QLineEdit:focus {{
+                border-color: {config.COLOR_SECONDARY};
+            }}
+            QGroupBox {{
+                font-weight: bold;
+                border: 1px solid #d0d0d0;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+                background-color: white;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }}
+        """)
+
+    def create_top_panel(self):
+        panel = QFrame()
+        panel.setObjectName("topPanel")
+        layout = QHBoxLayout(panel)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        title = QLabel("👤⚙️ Můj profil")
+        title.setObjectName("sectionTitle")
+        font = QFont()
+        font.setPointSize(14)
+        font.setBold(True)
+        title.setFont(font)
+        layout.addWidget(title)
+
+        layout.addStretch()
+
+        self.lbl_username = QLabel("")
+        self.lbl_username.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(self.lbl_username)
+
+        panel.setStyleSheet(f"""
+            #topPanel {{
+                background-color: #f8f9fa;
+                border-radius: 5px;
+                border: 1px solid #e0e0e0;
+            }}
+            #sectionTitle {{
+                color: {config.COLOR_PRIMARY};
+            }}
+        """)
+
+        return panel
+
+    def create_profile_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        info_group = QGroupBox("Osobní údaje")
+        info_layout = QFormLayout(info_group)
+        info_layout.setSpacing(12)
+
+        self.txt_username = QLineEdit()
+        self.txt_username.setReadOnly(True)
+        self.txt_username.setStyleSheet("background-color: #f0f0f0;")
+        info_layout.addRow("Uživatelské jméno:", self.txt_username)
+
+        self.txt_full_name = QLineEdit()
+        self.txt_full_name.setPlaceholderText("Vaše celé jméno")
+        info_layout.addRow("Celé jméno:", self.txt_full_name)
+
+        self.txt_email = QLineEdit()
+        self.txt_email.setPlaceholderText("vas@email.cz")
+        info_layout.addRow("Email:", self.txt_email)
+
+        self.txt_phone = QLineEdit()
+        self.txt_phone.setPlaceholderText("+420 123 456 789")
+        info_layout.addRow("Telefon:", self.txt_phone)
+
+        layout.addWidget(info_group)
+
+        role_group = QGroupBox("Role a oprávnění")
+        role_layout = QFormLayout(role_group)
+        role_layout.setSpacing(12)
+
+        self.lbl_role = QLabel("--")
+        self.lbl_role.setStyleSheet("font-weight: bold;")
+        role_layout.addRow("Vaše role:", self.lbl_role)
+
+        self.lbl_permissions_count = QLabel("--")
+        role_layout.addRow("Počet oprávnění:", self.lbl_permissions_count)
+
+        layout.addWidget(role_group)
+
+        layout.addStretch()
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+
+        self.btn_save_profile = QPushButton("💾 Uložit změny")
+        self.btn_save_profile.setObjectName("primaryButton")
+        self.btn_save_profile.clicked.connect(self.save_profile)
+        buttons_layout.addWidget(self.btn_save_profile)
+
+        layout.addLayout(buttons_layout)
+
+        tab.setStyleSheet(f"""
+            #primaryButton {{
+                background-color: {config.COLOR_SECONDARY};
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 10px 25px;
+                font-weight: bold;
+            }}
+            #primaryButton:hover {{
+                background-color: #2980b9;
+            }}
+        """)
+
+        return tab
+
+    def create_password_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        password_group = QGroupBox("Změna hesla")
+        password_layout = QFormLayout(password_group)
+        password_layout.setSpacing(12)
+
+        self.txt_current_password = QLineEdit()
+        self.txt_current_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_current_password.setPlaceholderText("Zadejte aktuální heslo")
+        password_layout.addRow("Aktuální heslo:", self.txt_current_password)
+
+        self.txt_new_password = QLineEdit()
+        self.txt_new_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_new_password.setPlaceholderText("Zadejte nové heslo")
+        self.txt_new_password.textChanged.connect(self.check_password_strength)
+        password_layout.addRow("Nové heslo:", self.txt_new_password)
+
+        self.txt_confirm_password = QLineEdit()
+        self.txt_confirm_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_confirm_password.setPlaceholderText("Potvrďte nové heslo")
+        password_layout.addRow("Potvrzení hesla:", self.txt_confirm_password)
+
+        self.lbl_password_strength = QLabel("Síla hesla: --")
+        self.lbl_password_strength.setStyleSheet("color: #666;")
+        password_layout.addRow("", self.lbl_password_strength)
+
+        layout.addWidget(password_group)
+
+        requirements_group = QGroupBox("Požadavky na heslo")
+        requirements_layout = QVBoxLayout(requirements_group)
+
+        requirements_text = QLabel(
+            "• Minimálně 6 znaků\n"
+            "• Doporučeno: velká a malá písmena\n"
+            "• Doporučeno: alespoň jedno číslo\n"
+            "• Nesmí být stejné jako uživatelské jméno"
+        )
+        requirements_text.setStyleSheet("color: #666;")
+        requirements_layout.addWidget(requirements_text)
+
+        layout.addWidget(requirements_group)
+
+        layout.addStretch()
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+
+        self.btn_change_password = QPushButton("🔑 Změnit heslo")
+        self.btn_change_password.setObjectName("primaryButton")
+        self.btn_change_password.clicked.connect(self.change_password)
+        buttons_layout.addWidget(self.btn_change_password)
+
+        layout.addLayout(buttons_layout)
+
+        tab.setStyleSheet(f"""
+            #primaryButton {{
+                background-color: {config.COLOR_SECONDARY};
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 10px 25px;
+                font-weight: bold;
+            }}
+            #primaryButton:hover {{
+                background-color: #2980b9;
+            }}
+        """)
+
+        return tab
+
+    def create_activity_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        stats_group = QGroupBox("Statistiky účtu")
+        stats_layout = QFormLayout(stats_group)
+        stats_layout.setSpacing(12)
+
+        self.lbl_created_at = QLabel("--")
+        stats_layout.addRow("Účet vytvořen:", self.lbl_created_at)
+
+        self.lbl_last_login = QLabel("--")
+        stats_layout.addRow("Poslední přihlášení:", self.lbl_last_login)
+
+        self.lbl_login_count = QLabel("--")
+        stats_layout.addRow("Celkem přihlášení:", self.lbl_login_count)
+
+        self.lbl_password_age = QLabel("--")
+        stats_layout.addRow("Stáří hesla:", self.lbl_password_age)
+
+        layout.addWidget(stats_group)
+
+        session_group = QGroupBox("Aktuální sezení")
+        session_layout = QFormLayout(session_group)
+        session_layout.setSpacing(12)
+
+        self.lbl_session_start = QLabel(datetime.now().strftime("%d.%m.%Y %H:%M"))
+        session_layout.addRow("Přihlášen od:", self.lbl_session_start)
+
+        layout.addWidget(session_group)
+
+        layout.addStretch()
+
+        return tab
+
+    def load_profile(self):
+        user_id = get_current_user_id()
+        if not user_id:
+            return
+
+        row = db.fetch_one(...)
+        self.user_data = dict(row) if row else {}
+
+        if not self.user_data:
+            return
+
+        self.lbl_username.setText(f"Přihlášen jako: {self.user_data['username']}")
+        self.txt_username.setText(self.user_data['username'])
+        self.txt_full_name.setText(self.user_data['full_name'] or "")
+        self.txt_email.setText(self.user_data['email'] or "")
+
+        if 'phone' in self.user_data:
+            self.txt_phone.setText(self.user_data['phone'] or "")
+
+        self.lbl_role.setText(self.user_data['role'] or "Bez role")
+
+        perm_count = db.fetch_one("""
+            SELECT COUNT(DISTINCT p.id) as count
+            FROM permissions p
+            JOIN role_permissions rp ON p.id = rp.permission_id
+            JOIN roles r ON rp.role_id = r.id
+            WHERE r.name = ? AND rp.allowed = 1
+        """, (self.user_data['role'],))
+
+        if perm_count:
+            self.lbl_permissions_count.setText(str(perm_count['count']))
+
+        if self.user_data['created_at']:
+            try:
+                dt = datetime.fromisoformat(self.user_data['created_at'])
+                self.lbl_created_at.setText(dt.strftime("%d.%m.%Y %H:%M"))
+            except:
+                self.lbl_created_at.setText(self.user_data['created_at'])
+
+        if self.user_data and 'last_login' in self.user_data.keys():
+            try:
+                dt = datetime.fromisoformat(self.user_data['last_login'])
+                self.lbl_last_login.setText(dt.strftime("%d.%m.%Y %H:%M"))
+            except:
+                self.lbl_last_login.setText(self.user_data['last_login'])
+
+        self.lbl_login_count.setText(str(self.user_data.get('login_count', 0)))
+
+        self.lbl_password_age.setText("Neznámé")
+
+    def save_profile(self):
+        user_id = get_current_user_id()
+        if not user_id:
+            return
+
+        full_name = self.txt_full_name.text().strip()
+        email = self.txt_email.text().strip() or None
+        phone = self.txt_phone.text().strip() or None
+
+        if not full_name:
+            QMessageBox.warning(self, "Chyba", "Celé jméno je povinné.")
+            return
+
+        try:
+            db.execute_query("""
+                UPDATE users SET
+                    full_name = ?, email = ?, phone = ?, updated_at = ?
+                WHERE id = ?
+            """, (full_name, email, phone, datetime.now().isoformat(), user_id))
+
+            QMessageBox.information(self, "Úspěch", "Profil byl úspěšně aktualizován.")
+            self.profile_updated.emit()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Chyba při ukládání profilu: {e}")
+
+    def check_password_strength(self):
+        password = self.txt_new_password.text()
+
+        if not password:
+            self.lbl_password_strength.setText("Síla hesla: --")
+            self.lbl_password_strength.setStyleSheet("color: #666;")
+            return
+
+        strength = 0
+
+        if len(password) >= 6:
+            strength += 1
+        if len(password) >= 8:
+            strength += 1
+        if len(password) >= 12:
+            strength += 1
+
+        if any(c.isupper() for c in password):
+            strength += 1
+        if any(c.islower() for c in password):
+            strength += 1
+        if any(c.isdigit() for c in password):
+            strength += 1
+        if any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in password):
+            strength += 1
+
+        if strength <= 2:
+            text = "Síla hesla: 🔴 Slabé"
+            color = config.COLOR_DANGER
+        elif strength <= 4:
+            text = "Síla hesla: 🟡 Střední"
+            color = config.COLOR_WARNING
+        elif strength <= 5:
+            text = "Síla hesla: 🟢 Silné"
+            color = config.COLOR_SUCCESS
+        else:
+            text = "Síla hesla: 💪 Velmi silné"
+            color = config.COLOR_SUCCESS
+
+        self.lbl_password_strength.setText(text)
+        self.lbl_password_strength.setStyleSheet(f"color: {color}; font-weight: bold;")
+
+    def change_password(self):
+        user_id = get_current_user_id()
+        if not user_id or not self.user_data:
+            return
+
+        current_password = self.txt_current_password.text()
+        new_password = self.txt_new_password.text()
+        confirm_password = self.txt_confirm_password.text()
+
+        if not current_password:
+            QMessageBox.warning(self, "Chyba", "Zadejte aktuální heslo.")
+            return
+
+        if not new_password:
+            QMessageBox.warning(self, "Chyba", "Zadejte nové heslo.")
+            return
+
+        if new_password != confirm_password:
+            QMessageBox.warning(self, "Chyba", "Nová hesla se neshodují.")
+            return
+
+        if len(new_password) < 6:
+            QMessageBox.warning(self, "Chyba", "Nové heslo musí mít alespoň 6 znaků.")
+            return
+
+        if new_password.lower() == self.user_data['username'].lower():
+            QMessageBox.warning(self, "Chyba", "Heslo nesmí být stejné jako uživatelské jméno.")
+            return
+
+        if not verify_password(current_password, self.user_data['password']):
+            QMessageBox.warning(self, "Chyba", "Aktuální heslo není správné.")
+            return
+
+        try:
+            new_hash = hash_password(new_password)
+
+            db.execute_query(
+                "UPDATE users SET password = ?, updated_at = ? WHERE id = ?",
+                (new_hash, datetime.now().isoformat(), user_id)
+            )
+
+            self.txt_current_password.clear()
+            self.txt_new_password.clear()
+            self.txt_confirm_password.clear()
+
+            QMessageBox.information(self, "Úspěch", "Heslo bylo úspěšně změněno.")
+
+            self.load_profile()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Chyba", f"Chyba při změně hesla: {e}")
+
+    def refresh(self):
+        self.load_profile()

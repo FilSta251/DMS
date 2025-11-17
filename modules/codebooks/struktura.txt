@@ -1,0 +1,18 @@
+modules/codebooks/
+├── __init__.py                    # Inicializace modulu
+├── module_codebooks.py            # Hlavní vstupní bod modulu
+├── codebook_brands.py             # Značky vozidel
+├── codebook_repair_types.py       # Typy oprav
+├── codebook_units.py              # Měrné jednotky
+├── codebook_currencies.py         # Měny
+├── codebook_positions.py          # Pracovní pozice
+├── codebook_hourly_rates.py       # Hodinové sazby
+├── codebook_customer_groups.py    # Zákaznické skupiny
+├── codebook_payment_methods.py    # Způsoby platby
+├── codebook_vat_rates.py          # Sazby DPH
+├── codebook_order_statuses.py     # Stavy zakázek
+├── codebook_vehicle_types.py      # Typy vozidel
+├── codebook_fuel_types.py         # Typy paliva
+├── codebook_colors.py             # Barvy vozidel
+├── codebook_import_export.py      # Import/export číselníků
+└── codebook_widgets.py            # Sdílené widgety

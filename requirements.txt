@@ -1,0 +1,16 @@
+# Motoservis DMS - Požadované Python balíčky
+
+# GUI Framework
+PyQt6>=6.6.0
+
+# Databáze (SQLite je součástí Pythonu)
+
+# Reporting a export
+reportlab>=4.0.0
+openpyxl>=3.1.0
+
+# Datum a čas (součást Pythonu)
+# datetime
+
+# Další užitečné balíčky
+pillow>=10.0.0  # Práce s obrázky
